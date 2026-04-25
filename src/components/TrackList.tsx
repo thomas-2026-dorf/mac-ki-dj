@@ -22,13 +22,13 @@ export default function TrackList({
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
 
-    // 🔥 Track-Library speichern
-    function saveLibrary(tracks: Track[], folder: string) {
-        localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(tracks));
-        localStorage.setItem(MUSIC_FOLDER_STORAGE_KEY, folder);
+    function saveLibrary(updatedTracks: Track[], folder: string | null) {
+        localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
+        if (folder) {
+            localStorage.setItem(MUSIC_FOLDER_STORAGE_KEY, folder);
+        }
     }
 
-    // 🔥 Track-Library laden (beim Start)
     useEffect(() => {
         const savedTracks = localStorage.getItem(TRACK_LIBRARY_STORAGE_KEY);
         const savedFolder = localStorage.getItem(MUSIC_FOLDER_STORAGE_KEY);
@@ -47,7 +47,6 @@ export default function TrackList({
         }
     }, []);
 
-    // 🔥 Ordner einlesen
     async function loadTracksFromFolder(folder: string) {
         const entries = await readDir(folder);
 
@@ -69,17 +68,19 @@ export default function TrackList({
                     duration: "00:00",
                     genre: "Local",
                     url: `${folder}/${name}`,
+                    analysis: {
+                        status: "none",
+                        cuePoints: [],
+                        loops: [],
+                    },
                 };
             });
 
         setTracks(mp3Files);
         setMusicFolder(folder);
-
-        // 🔥 speichern
         saveLibrary(mp3Files, folder);
     }
 
-    // 🔥 Button
     async function handleSelectFolder() {
         try {
             const folder = await open({
@@ -97,11 +98,32 @@ export default function TrackList({
         }
     }
 
+    // 🔥 Analyse vormerken
+    function markForAnalysis(trackId: string) {
+        const updated = tracks.map((t) => {
+            if (t.id !== trackId) return t;
+
+            return {
+                ...t,
+                analysis: {
+                    ...(t.analysis || {
+                        cuePoints: [],
+                        loops: [],
+                    }),
+                    status: "pending" as const,
+                },
+            };
+        });
+
+        setTracks(updated);
+        saveLibrary(updated, musicFolder);
+    }
+
     const list =
         tracks.length > 0
             ? tracks
             : musicFolder
-                ? [] // kein fallback mehr wenn ordner gesetzt
+                ? []
                 : demoTracks;
 
     return (
@@ -109,7 +131,7 @@ export default function TrackList({
             <div className="track-list-title-row">
                 <h2>Songliste</h2>
 
-                <button type="button" onClick={handleSelectFolder}>
+                <button onClick={handleSelectFolder}>
                     Musikordner wählen
                 </button>
             </div>
@@ -129,12 +151,6 @@ export default function TrackList({
                 <span></span>
             </div>
 
-            {list.length === 0 && musicFolder && (
-                <div style={{ padding: "10px", opacity: 0.6 }}>
-                    Keine Tracks geladen (Ordnerzugriff nötig → Button klicken)
-                </div>
-            )}
-
             {list.map((track) => (
                 <div className="track-row" key={track.id}>
                     <div>
@@ -142,6 +158,12 @@ export default function TrackList({
                         <small>
                             {track.artist} · {track.genre}
                         </small>
+
+                        {track.analysis?.status === "pending" && (
+                            <div style={{ color: "orange", fontSize: "12px" }}>
+                                Analyse geplant
+                            </div>
+                        )}
                     </div>
 
                     <span>{track.bpm}</span>
@@ -153,6 +175,10 @@ export default function TrackList({
                         <button onClick={() => onLoadA(track)}>A</button>
                         <button onClick={() => onLoadB(track)}>B</button>
                         <button onClick={() => onAddToQueue(track)}>+</button>
+
+                        <button onClick={() => markForAnalysis(track.id)}>
+                            Analyse
+                        </button>
                     </div>
                 </div>
             ))}
