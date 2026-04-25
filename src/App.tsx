@@ -28,6 +28,9 @@ function App() {
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
   const [nextDeck, setNextDeck] = useState<"A" | "B">("A");
   const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
+  const [crossfader, setCrossfader] = useState(0.5);
+  const volumeA = 1 - crossfader;
+  const volumeB = crossfader;
 
   useEffect(() => {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
@@ -135,9 +138,17 @@ function App() {
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
           onPlay={() => prepareNextForDeck("A")}
+          volume={volumeA}
         />
 
-        <Crossfader onActiveDeckChange={setActiveDeck} />
+        <Crossfader
+          onActiveDeckChange={setActiveDeck}
+          onChange={setCrossfader}
+        />
+
+        <div style={{ display: "none" }} aria-hidden="true">
+          Volume A: {volumeA.toFixed(2)} | Volume B: {volumeB.toFixed(2)}
+        </div>
 
         <Deck
           title="Deck B"
@@ -145,6 +156,7 @@ function App() {
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
           onPlay={() => prepareNextForDeck("B")}
+          volume={volumeB}
         />
       </div>
 

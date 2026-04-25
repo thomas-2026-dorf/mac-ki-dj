@@ -2,13 +2,16 @@ import { useState } from "react";
 
 type CrossfaderProps = {
     onActiveDeckChange: (deck: "A" | "B") => void;
+    onChange: (value: number) => void; // 0 → A | 1 → B
 };
 
-export default function Crossfader({ onActiveDeckChange }: CrossfaderProps) {
+export default function Crossfader({ onActiveDeckChange, onChange }: CrossfaderProps) {
     const [value, setValue] = useState(50);
 
     function handleChange(nextValue: number) {
         setValue(nextValue);
+
+        onChange(nextValue / 100);
 
         if (nextValue < 50) {
             onActiveDeckChange("A");

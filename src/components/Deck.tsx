@@ -7,6 +7,7 @@ type DeckProps = {
     isActive?: boolean;
     onActivate?: () => void;
     onPlay?: () => void;
+    volume: number; // 0 - 1 vom Crossfader
 };
 
 export default function Deck({
@@ -15,6 +16,7 @@ export default function Deck({
     isActive,
     onActivate,
     onPlay,
+    volume,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
 
@@ -50,6 +52,10 @@ export default function Deck({
 
             <div className="waveform">
                 <span>{track ? track.title : "Kein Track"}</span>
+            </div>
+
+            <div className="deck-volume">
+                Volume: {volume.toFixed(2)}
             </div>
 
             <div className="deck-info">
