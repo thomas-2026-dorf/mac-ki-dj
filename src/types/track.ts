@@ -7,4 +7,5 @@ export type Track = {
     energy: number;
     duration: string;
     genre: string;
+    url?: string; // 🔥 Audio-Datei
 };

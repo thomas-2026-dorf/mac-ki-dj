@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { Track } from "../types/track";
 
 type DeckProps = {
@@ -19,13 +19,25 @@ export default function Deck({
     volume,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.volume = volume;
+        }
+    }, [volume]);
 
     function handlePlayPause() {
         setIsPlaying((current) => {
             const next = !current;
 
-            if (next) {
-                onPlay?.();
+            if (audioRef.current) {
+                if (next) {
+                    audioRef.current.play();
+                    onPlay?.();
+                } else {
+                    audioRef.current.pause();
+                }
             }
 
             return next;
@@ -33,6 +45,11 @@ export default function Deck({
     }
 
     function handleStop() {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        }
+
         setIsPlaying(false);
     }
 
@@ -76,6 +93,12 @@ export default function Deck({
                 <button disabled={!track}>Cue</button>
                 <button disabled={!track}>Sync</button>
             </div>
+
+            <audio
+                ref={audioRef}
+                src={track?.url}
+                preload="auto"
+            />
         </div>
     );
 }
