@@ -291,3 +291,30 @@ body {
   cursor: pointer;
   font-size: 11px;
 }
+
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.queue-row-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.queue-row-actions button {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.queue-row-actions button:hover {
+  background: #334155;
+}

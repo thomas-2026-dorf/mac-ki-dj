@@ -41,6 +41,34 @@ function App() {
     setQueue([]);
   }
 
+  function removeFromQueue(trackId: string) {
+    setQueue((prev) => prev.filter((t) => t.id !== trackId));
+  }
+
+  function moveUp(index: number) {
+    setQueue((prev) => {
+      if (index === 0) return prev;
+      const newQueue = [...prev];
+      [newQueue[index - 1], newQueue[index]] = [
+        newQueue[index],
+        newQueue[index - 1],
+      ];
+      return newQueue;
+    });
+  }
+
+  function moveDown(index: number) {
+    setQueue((prev) => {
+      if (index === prev.length - 1) return prev;
+      const newQueue = [...prev];
+      [newQueue[index], newQueue[index + 1]] = [
+        newQueue[index + 1],
+        newQueue[index],
+      ];
+      return newQueue;
+    });
+  }
+
   function loadNextTrack() {
     if (queue.length === 0) return;
 
@@ -95,7 +123,12 @@ function App() {
             </button>
           </div>
 
-          <QueuePanel queue={queue} />
+          <QueuePanel
+            queue={queue}
+            onRemove={removeFromQueue}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+          />
           <AiPanel />
         </div>
       </div>
