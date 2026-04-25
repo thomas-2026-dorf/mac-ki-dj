@@ -14,6 +14,20 @@ type Props = {
     onAddToQueue: (track: Track) => void;
 };
 
+function getAnalysisLabel(track: Track) {
+    if (track.analysis?.status === "done") return "Analyse fertig";
+    if (track.analysis?.status === "pending") return "Analyse geplant";
+    if (track.analysis?.status === "error") return "Analyse Fehler";
+    return "Nicht analysiert";
+}
+
+function getAnalysisColor(track: Track) {
+    if (track.analysis?.status === "done") return "lightgreen";
+    if (track.analysis?.status === "pending") return "orange";
+    if (track.analysis?.status === "error") return "red";
+    return "#aaa";
+}
+
 export default function TrackList({
     onLoadA,
     onLoadB,
@@ -150,12 +164,12 @@ export default function TrackList({
         };
     }
 
-    // 🔥 ALLE analysieren
     function analyzeAll() {
         const updated = tracks.map((track) => {
             if (track.analysis?.status !== "done") {
                 return runFakeAnalysis(track);
             }
+
             return track;
         });
 
@@ -175,11 +189,11 @@ export default function TrackList({
             <div className="track-list-title-row">
                 <h2>Songliste</h2>
 
-                <button onClick={handleSelectFolder}>
+                <button type="button" onClick={handleSelectFolder}>
                     Musikordner wählen
                 </button>
 
-                <button onClick={analyzeAll}>
+                <button type="button" onClick={analyzeAll} disabled={tracks.length === 0}>
                     Alle analysieren
                 </button>
             </div>
@@ -207,17 +221,11 @@ export default function TrackList({
                             {track.artist} · {track.genre}
                         </small>
 
-                        {track.analysis?.status === "pending" && (
-                            <div style={{ color: "orange", fontSize: "12px" }}>
-                                Analyse geplant
-                            </div>
-                        )}
-
-                        {track.analysis?.status === "done" && (
-                            <div style={{ color: "lightgreen", fontSize: "12px" }}>
-                                Analyse fertig
-                            </div>
-                        )}
+                        <div style={{ color: getAnalysisColor(track), fontSize: "12px" }}>
+                            {getAnalysisLabel(track)}
+                            {track.analysis?.status === "done" &&
+                                ` · BPM ${track.analysis.detectedBpm} · Key ${track.analysis.detectedKey}`}
+                        </div>
                     </div>
 
                     <span>{track.bpm}</span>
@@ -226,13 +234,21 @@ export default function TrackList({
                     <span>{track.duration}</span>
 
                     <div className="load-buttons">
-                        <button onClick={() => onLoadA(track)}>A</button>
-                        <button onClick={() => onLoadB(track)}>B</button>
-                        <button onClick={() => onAddToQueue(track)}>+</button>
+                        <button type="button" onClick={() => onLoadA(track)}>A</button>
+                        <button type="button" onClick={() => onLoadB(track)}>B</button>
+                        <button type="button" onClick={() => onAddToQueue(track)}>+</button>
 
-                        <button onClick={() => markForAnalysis(track.id)}>
-                            Analyse
-                        </button>
+                        {track.analysis?.status !== "done" && (
+                            <button type="button" onClick={() => markForAnalysis(track.id)}>
+                                Analyse vormerken
+                            </button>
+                        )}
+
+                        {track.analysis?.status === "done" && (
+                            <button type="button" disabled>
+                                Analysiert
+                            </button>
+                        )}
                     </div>
                 </div>
             ))}
