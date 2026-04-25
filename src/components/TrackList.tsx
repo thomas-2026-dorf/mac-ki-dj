@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readDir } from "@tauri-apps/plugin-fs";
+import { readDir, readFile } from "@tauri-apps/plugin-fs";
 
 import { demoTracks } from "../data/demoTracks";
 import type { Track } from "../types/track";
+import { analyzeAudioBuffer } from "../modules/analysis/audioAnalyzer";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
 const TRACK_LIBRARY_STORAGE_KEY = "tk-dj-track-library-v1";
@@ -26,6 +27,12 @@ function getAnalysisColor(track: Track) {
     if (track.analysis?.status === "pending") return "orange";
     if (track.analysis?.status === "error") return "red";
     return "#aaa";
+}
+
+function formatDuration(seconds: number): string {
+    const min = Math.floor(seconds / 60);
+    const sec = Math.floor(seconds % 60);
+    return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 export default function TrackList({
@@ -130,6 +137,45 @@ export default function TrackList({
 
         setTracks(updated);
         saveLibrary(updated, musicFolder);
+    }
+
+    async function runRealBasicAnalysis(track: Track) {
+        try {
+            if (!track.url) {
+                alert("Kein Dateipfad vorhanden");
+                return;
+            }
+
+            const audioBytes = await readFile(track.url);
+            const info = await analyzeAudioBuffer(audioBytes);
+
+            const updated = tracks.map((t) => {
+                if (t.id !== track.id) return t;
+
+                return {
+                    ...t,
+                    duration: formatDuration(info.durationSeconds),
+                    analysis: {
+                        ...(t.analysis || {
+                            cuePoints: [],
+                            loops: [],
+                        }),
+                        status: "done" as const,
+                        analyzedAt: new Date().toISOString(),
+                        durationSeconds: info.durationSeconds,
+                        sampleRate: info.sampleRate,
+                        channels: info.numberOfChannels,
+                    },
+                };
+            });
+
+            setTracks(updated);
+            saveLibrary(updated, musicFolder);
+
+        } catch (err) {
+            console.error("Echte Analyse Fehler:", err);
+            alert("Analyse Fehler: " + String(err));
+        }
     }
 
     function runFakeAnalysis(track: Track): Track {
@@ -243,6 +289,10 @@ export default function TrackList({
                                 Analyse vormerken
                             </button>
                         )}
+
+                        <button type="button" onClick={() => runRealBasicAnalysis(track)}>
+                            Audio testen
+                        </button>
 
                         {track.analysis?.status === "done" && (
                             <button type="button" disabled>

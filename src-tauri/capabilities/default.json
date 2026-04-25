@@ -10,6 +10,17 @@
     "opener:default",
     "dialog:default",
     "fs:read-all",
-    "fs:allow-read-dir"
+    "fs:allow-read-dir",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        {
+          "path": "$HOME/Musik/**"
+        },
+        {
+          "path": "$HOME/Music/**"
+        }
+      ]
+    }
   ]
 }
