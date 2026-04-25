@@ -1,0 +1,16 @@
+Arbeitsweise:
+
+1. Ziel beschreiben
+2. Datei nennen
+3. komplette Lösung liefern
+4. einbauen
+5. testen
+6. commit
+
+Keine:
+- unklaren Anweisungen
+- großen Umbauten
+- Mehr-Dateien-Chaos
+
+Immer:
+- kleinster funktionierender Schritt

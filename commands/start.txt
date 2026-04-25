@@ -1,0 +1,37 @@
+Projekt: TK-DJ (Mac KI DJ App)
+
+Ziel:
+Eigene DJ-App für Mac (Mac mini + MacBook)
+mit KI-gestützter Songauswahl und Set-Planung
+
+Tech:
+- Tauri
+- React
+- TypeScript
+- VS Code
+- GitHub
+
+WICHTIGER WORKFLOW:
+- kleine sichere Schritte
+- keine großen Umbauten
+- immer nur eine Datei gleichzeitig ändern
+- Änderungen nur als:
+  → komplette Datei ODER
+  → klarer ALT → NEU Block
+- erst erklären, dann kleinster Schritt
+- nach jedem Schritt testen + commit
+
+Projektstruktur:
+- Komponenten getrennt (Deck, Crossfader, TrackList, AiPanel)
+- keine aufgeblähten Dateien
+
+Status:
+- Projekt läuft
+- Git + GitHub verbunden
+- Context Script vorhanden (npm run context)
+
+Nächster Fokus:
+- DJ UI weiter ausbauen
+- Deck Komponente verbessern (Waveform, BPM, Layout)
+
+Bitte exakt nach diesem Workflow arbeiten.
