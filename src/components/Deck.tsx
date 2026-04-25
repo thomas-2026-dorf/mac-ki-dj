@@ -6,6 +6,7 @@ type DeckProps = {
     track?: Track;
     isActive?: boolean;
     onActivate?: () => void;
+    onPlay?: () => void;
 };
 
 export default function Deck({
@@ -13,11 +14,20 @@ export default function Deck({
     track,
     isActive,
     onActivate,
+    onPlay,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
 
     function handlePlayPause() {
-        setIsPlaying((v) => !v);
+        setIsPlaying((current) => {
+            const next = !current;
+
+            if (next) {
+                onPlay?.();
+            }
+
+            return next;
+        });
     }
 
     function handleStop() {

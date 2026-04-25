@@ -85,6 +85,47 @@ function App() {
     setQueue(remainingQueue);
   }
 
+  function autoLoadFreeDeck() {
+    if (queue.length === 0) return;
+    if (deckATrack && deckBTrack) return;
+
+    const [nextTrack, ...remainingQueue] = queue;
+
+    if (!deckBTrack && activeDeck === "A") {
+      setDeckBTrack(nextTrack);
+      setNextDeck("A");
+    } else if (!deckATrack && activeDeck === "B") {
+      setDeckATrack(nextTrack);
+      setNextDeck("B");
+    } else if (!deckATrack) {
+      setDeckATrack(nextTrack);
+      setNextDeck("B");
+    } else if (!deckBTrack) {
+      setDeckBTrack(nextTrack);
+      setNextDeck("A");
+    }
+
+    setQueue(remainingQueue);
+  }
+
+  function prepareNextForDeck(playingDeck: "A" | "B") {
+    if (queue.length === 0) return;
+
+    const [nextTrack, ...remainingQueue] = queue;
+
+    if (playingDeck === "A" && !deckBTrack) {
+      setDeckBTrack(nextTrack);
+      setNextDeck("A");
+      setQueue(remainingQueue);
+    }
+
+    if (playingDeck === "B" && !deckATrack) {
+      setDeckATrack(nextTrack);
+      setNextDeck("B");
+      setQueue(remainingQueue);
+    }
+  }
+
   return (
     <div className="app">
       <div className="top">
@@ -93,15 +134,17 @@ function App() {
           track={deckATrack}
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
+          onPlay={() => prepareNextForDeck("A")}
         />
 
-        <Crossfader />
+        <Crossfader onActiveDeckChange={setActiveDeck} />
 
         <Deck
           title="Deck B"
           track={deckBTrack}
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
+          onPlay={() => prepareNextForDeck("B")}
         />
       </div>
 
@@ -116,6 +159,13 @@ function App() {
           <div className="queue-actions">
             <button onClick={loadNextTrack} disabled={queue.length === 0}>
               Next → Deck {nextDeck}
+            </button>
+
+            <button
+              onClick={autoLoadFreeDeck}
+              disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
+            >
+              Auto Load frei
             </button>
 
             <button onClick={clearQueue} disabled={queue.length === 0}>

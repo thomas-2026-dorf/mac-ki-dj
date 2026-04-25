@@ -1,32 +1,22 @@
 import { useState } from "react";
 
-export default function Crossfader() {
+type CrossfaderProps = {
+    onActiveDeckChange: (deck: "A" | "B") => void;
+};
+
+export default function Crossfader({ onActiveDeckChange }: CrossfaderProps) {
     const [value, setValue] = useState(50);
-    const [isAutoFading, setIsAutoFading] = useState(false);
 
-    function autoFadeToB() {
-        if (isAutoFading) return;
+    function handleChange(nextValue: number) {
+        setValue(nextValue);
 
-        setIsAutoFading(true);
-        setValue(0);
+        if (nextValue < 50) {
+            onActiveDeckChange("A");
+        }
 
-        let current = 0;
-
-        const timer = window.setInterval(() => {
-            current += 5;
-            setValue(current);
-
-            if (current >= 100) {
-                window.clearInterval(timer);
-                setValue(100);
-                setIsAutoFading(false);
-            }
-        }, 100);
-    }
-
-    function resetCenter() {
-        if (isAutoFading) return;
-        setValue(50);
+        if (nextValue > 50) {
+            onActiveDeckChange("B");
+        }
     }
 
     return (
@@ -41,23 +31,12 @@ export default function Crossfader() {
                 min="0"
                 max="100"
                 value={value}
-                onChange={(e) => setValue(Number(e.target.value))}
+                onChange={(e) => handleChange(Number(e.target.value))}
                 className="fader"
-                disabled={isAutoFading}
             />
 
             <div className="value">
                 A: {100 - value} | B: {value}
-            </div>
-
-            <div className="crossfader-buttons">
-                <button onClick={resetCenter} disabled={isAutoFading}>
-                    Mitte
-                </button>
-
-                <button onClick={autoFadeToB} disabled={isAutoFading}>
-                    {isAutoFading ? "Auto läuft..." : "Auto → B"}
-                </button>
             </div>
         </div>
     );
