@@ -30,5 +30,6 @@ export const demoTracks: Track[] = [
         energy: 8,
         duration: "03:55",
         genre: "Rock",
+        url: "test-track.mp3",
     },
 ];

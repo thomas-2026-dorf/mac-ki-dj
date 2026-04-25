@@ -93,12 +93,6 @@ export default function Deck({
                 <button disabled={!track}>Cue</button>
                 <button disabled={!track}>Sync</button>
             </div>
-
-            <audio
-                ref={audioRef}
-                src={track?.url}
-                preload="auto"
-            />
         </div>
     );
 }
