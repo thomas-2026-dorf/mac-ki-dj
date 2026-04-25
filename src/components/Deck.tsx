@@ -1,8 +1,11 @@
+import type { Track } from "../types/track";
+
 type DeckProps = {
     title: string;
+    track?: Track;
 };
 
-export default function Deck({ title }: DeckProps) {
+export default function Deck({ title, track }: DeckProps) {
     return (
         <div className="deck">
             <div className="deck-header">
@@ -10,13 +13,13 @@ export default function Deck({ title }: DeckProps) {
             </div>
 
             <div className="waveform">
-                <span>Waveform</span>
+                <span>{track ? track.title : "Kein Track"}</span>
             </div>
 
             <div className="deck-info">
-                <div>BPM: 124</div>
-                <div>Key: 8A</div>
-                <div>Energy: 6</div>
+                <div>BPM: {track ? track.bpm : "-"}</div>
+                <div>Key: {track ? track.key : "-"}</div>
+                <div>Energy: {track ? track.energy : "-"}</div>
             </div>
         </div>
     );

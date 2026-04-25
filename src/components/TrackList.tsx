@@ -1,6 +1,11 @@
 import { demoTracks } from "../data/demoTracks";
+import type { Track } from "../types/track";
 
-export default function TrackList() {
+type Props = {
+    onSelect: (track: Track) => void;
+};
+
+export default function TrackList({ onSelect }: Props) {
     return (
         <div className="track-list">
             <h2>Songliste</h2>
@@ -14,7 +19,11 @@ export default function TrackList() {
             </div>
 
             {demoTracks.map((track) => (
-                <div className="track-row" key={track.id}>
+                <div
+                    className="track-row"
+                    key={track.id}
+                    onClick={() => onSelect(track)}
+                >
                     <div>
                         <strong>{track.title}</strong>
                         <small>
