@@ -118,60 +118,45 @@ export default function TrackList({
         saveLibrary(updated, musicFolder);
     }
 
-    function runFakeAnalysis(trackId: string) {
-        const updated = tracks.map((track) => {
-            if (track.id !== trackId) return track;
+    function runFakeAnalysis(track: Track): Track {
+        return {
+            ...track,
+            bpm: track.bpm || 124,
+            key: track.key === "-" ? "8A" : track.key,
+            energy: track.energy || 7,
+            analysis: {
+                ...(track.analysis || {
+                    cuePoints: [],
+                    loops: [],
+                }),
+                status: "done" as const,
+                analyzedAt: new Date().toISOString(),
+                detectedBpm: track.bpm || 124,
+                detectedKey: track.key === "-" ? "8A" : track.key,
+                introEndSeconds: 16,
+                outroStartSeconds: 165,
+                hasDjOutro: false,
+                note: "Fake-Analyse Batch",
+                cuePoints: [
+                    {
+                        id: `${track.id}-start`,
+                        name: "Start",
+                        timeSeconds: 0,
+                        type: "start" as const,
+                    },
+                ],
+                loops: [],
+            },
+        };
+    }
 
-            return {
-                ...track,
-                bpm: track.bpm || 124,
-                key: track.key === "-" ? "8A" : track.key,
-                energy: track.energy || 7,
-                analysis: {
-                    ...(track.analysis || {
-                        cuePoints: [],
-                        loops: [],
-                    }),
-                    status: "done" as const,
-                    analyzedAt: new Date().toISOString(),
-                    detectedBpm: track.bpm || 124,
-                    detectedKey: track.key === "-" ? "8A" : track.key,
-                    introEndSeconds: 16,
-                    outroStartSeconds: 165,
-                    hasDjOutro: false,
-                    note: "Fake-Analyse: Testwerte für Workflow gesetzt.",
-                    cuePoints: [
-                        {
-                            id: `${track.id}-cue-start`,
-                            name: "Start",
-                            timeSeconds: 0,
-                            type: "start" as const,
-                        },
-                        {
-                            id: `${track.id}-cue-intro-end`,
-                            name: "Intro Ende",
-                            timeSeconds: 16,
-                            type: "intro" as const,
-                        },
-                        {
-                            id: `${track.id}-cue-outro`,
-                            name: "Outro Start",
-                            timeSeconds: 165,
-                            type: "outro" as const,
-                        },
-                    ],
-                    loops: [
-                        {
-                            id: `${track.id}-loop-outro`,
-                            name: "Outro Loop 16 Beats",
-                            startSeconds: 165,
-                            endSeconds: 173,
-                            beats: 16 as const,
-                            purpose: "outro-builder" as const,
-                        },
-                    ],
-                },
-            };
+    // 🔥 ALLE analysieren
+    function analyzeAll() {
+        const updated = tracks.map((track) => {
+            if (track.analysis?.status !== "done") {
+                return runFakeAnalysis(track);
+            }
+            return track;
         });
 
         setTracks(updated);
@@ -190,8 +175,12 @@ export default function TrackList({
             <div className="track-list-title-row">
                 <h2>Songliste</h2>
 
-                <button type="button" onClick={handleSelectFolder}>
+                <button onClick={handleSelectFolder}>
                     Musikordner wählen
+                </button>
+
+                <button onClick={analyzeAll}>
+                    Alle analysieren
                 </button>
             </div>
 
@@ -226,7 +215,7 @@ export default function TrackList({
 
                         {track.analysis?.status === "done" && (
                             <div style={{ color: "lightgreen", fontSize: "12px" }}>
-                                Analyse fertig · BPM {track.analysis.detectedBpm} · Key {track.analysis.detectedKey}
+                                Analyse fertig
                             </div>
                         )}
                     </div>
@@ -237,16 +226,12 @@ export default function TrackList({
                     <span>{track.duration}</span>
 
                     <div className="load-buttons">
-                        <button type="button" onClick={() => onLoadA(track)}>A</button>
-                        <button type="button" onClick={() => onLoadB(track)}>B</button>
-                        <button type="button" onClick={() => onAddToQueue(track)}>+</button>
+                        <button onClick={() => onLoadA(track)}>A</button>
+                        <button onClick={() => onLoadB(track)}>B</button>
+                        <button onClick={() => onAddToQueue(track)}>+</button>
 
-                        <button type="button" onClick={() => markForAnalysis(track.id)}>
+                        <button onClick={() => markForAnalysis(track.id)}>
                             Analyse
-                        </button>
-
-                        <button type="button" onClick={() => runFakeAnalysis(track.id)}>
-                            Fake fertig
                         </button>
                     </div>
                 </div>
