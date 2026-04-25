@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Track } from "../types/track";
 
 type DeckProps = {
@@ -7,7 +8,7 @@ type DeckProps = {
     isActive?: boolean;
     onActivate?: () => void;
     onPlay?: () => void;
-    volume: number; // 0 - 1 vom Crossfader
+    volume: number;
 };
 
 export default function Deck({
@@ -27,21 +28,40 @@ export default function Deck({
         }
     }, [volume]);
 
-    function handlePlayPause() {
-        setIsPlaying((current) => {
-            const next = !current;
+    useEffect(() => {
+        if (!audioRef.current) return;
 
-            if (audioRef.current) {
-                if (next) {
-                    audioRef.current.play();
-                    onPlay?.();
-                } else {
-                    audioRef.current.pause();
-                }
-            }
+        if (!track?.url) {
+            audioRef.current.removeAttribute("src");
+            audioRef.current.load();
+            setIsPlaying(false);
+            return;
+        }
 
-            return next;
-        });
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.src = convertFileSrc(track.url);
+        audioRef.current.load();
+        setIsPlaying(false);
+    }, [track]);
+
+    async function handlePlayPause() {
+        if (!audioRef.current || !track) return;
+
+        if (isPlaying) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+            return;
+        }
+
+        try {
+            await audioRef.current.play();
+            setIsPlaying(true);
+            onPlay?.();
+        } catch (error) {
+            console.error("Audio konnte nicht abgespielt werden:", error);
+            alert("Audio konnte nicht abgespielt werden: " + String(error));
+        }
     }
 
     function handleStop() {
@@ -71,10 +91,6 @@ export default function Deck({
                 <span>{track ? track.title : "Kein Track"}</span>
             </div>
 
-            <div className="deck-volume">
-                Volume: {volume.toFixed(2)}
-            </div>
-
             <div className="deck-info">
                 <div>BPM: {track ? track.bpm : "-"}</div>
                 <div>Key: {track ? track.key : "-"}</div>
@@ -93,6 +109,8 @@ export default function Deck({
                 <button disabled={!track}>Cue</button>
                 <button disabled={!track}>Sync</button>
             </div>
+
+            <audio ref={audioRef} />
         </div>
     );
 }

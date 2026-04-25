@@ -318,3 +318,8 @@ body {
 .queue-row-actions button:hover {
   background: #334155;
 }
+
+.track-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
