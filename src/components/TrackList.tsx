@@ -155,7 +155,13 @@ export default function TrackList({
                 return {
                     ...t,
                     duration: formatDuration(info.durationSeconds),
+                    bpm: info.estimatedBpm ?? t.bpm,
+
                     analysis: {
+                        ...(t.analysis || {
+                            cuePoints: [],
+                            loops: [],
+                        }),
                         ...(t.analysis || {
                             cuePoints: [],
                             loops: [],
@@ -164,7 +170,8 @@ export default function TrackList({
                         analyzedAt: new Date().toISOString(),
                         durationSeconds: info.durationSeconds,
                         sampleRate: info.sampleRate,
-                        channels: info.numberOfChannels,
+                        cchannels: info.numberOfChannels,
+                        detectedBpm: info.estimatedBpm ?? undefined,
                     },
                 };
             });
