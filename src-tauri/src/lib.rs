@@ -162,8 +162,13 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         rounded
     };
 
-    let grid_start_seconds = peak_times.first().copied().unwrap_or(0.5);
     let beat_interval_seconds = 60.0 / bpm;
+
+    // Wichtig:
+    // Nicht künstlich auf 0 zurückrechnen.
+    // Grid Start bleibt erst einmal der früheste echte erkannte Peak.
+    // Downbeat-Erkennung bauen wir danach gezielter.
+    let grid_start_seconds = peak_times.first().copied().unwrap_or(0.5);
 
     let beats: Vec<f64> = (0..200)
         .map(|index| grid_start_seconds + (index as f64 * beat_interval_seconds))
