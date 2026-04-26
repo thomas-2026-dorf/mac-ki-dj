@@ -124,14 +124,17 @@ export default function TrackList({
         }
     }
 
-    function markForAnalysis(trackId: string) {
-        const updated = tracks.map((track) => {
-            if (track.id !== trackId) return track;
+    async function markForAnalysis(trackId: string) {
+        const track = tracks.find((t) => t.id === trackId);
+        if (!track) return;
+
+        const updated = tracks.map((t) => {
+            if (t.id !== trackId) return t;
 
             return {
-                ...track,
+                ...t,
                 analysis: {
-                    ...(track.analysis || {
+                    ...(t.analysis || {
                         cuePoints: [],
                         loops: [],
                     }),
@@ -142,6 +145,8 @@ export default function TrackList({
 
         setTracks(updated);
         saveLibrary(updated, musicFolder);
+
+        await runRealBasicAnalysis(track);
     }
 
     async function runRealBasicAnalysis(track: Track) {
@@ -161,6 +166,7 @@ export default function TrackList({
                     ...t,
                     duration: formatDuration(info.durationSeconds),
                     bpm: info.bpm ?? t.bpm,
+                    key: info.camelotKey ?? info.key ?? t.key,
                     energy: info.energyLevel,
 
                     analysis: {
@@ -171,6 +177,7 @@ export default function TrackList({
                         status: "done" as const,
                         analyzedAt: new Date().toISOString(),
                         detectedBpm: info.bpm ?? undefined,
+                        detectedKey: info.camelotKey ?? info.key ?? undefined,
                         bpmSource: "auto" as const,
                         bpmConfidence: info.bpmConfidence,
                         bpmConfirmed: false,

@@ -36,6 +36,8 @@ export type CuePoint = {
 };
 
 export type AudioAnalysisResult = {
+    key?: string;
+    camelotKey?: string;
     debug?: {
         onsetCount: number;
         bpmCandidates: number[];

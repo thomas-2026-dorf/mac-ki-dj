@@ -1,3 +1,4 @@
+import { detectKey } from "./keyDetection";
 import { calculateBpmCandidates, selectBestBpm } from "./bpm";
 import { calculateEnergyFrames, calculateEnergyLevel } from "./energy";
 import { detectOnsets } from "./onsets";
@@ -42,7 +43,11 @@ export async function analyzeAudioBuffer(
         const waveform = generateWaveform(signal);
         const cuePoints = detectBasicCuePoints(onsets);
 
-        return {
+        const keyResult = detectKey(audioBuffer);
+
+    return {
+        key: keyResult?.keyName,
+        camelotKey: keyResult?.camelotKey,
             durationSeconds: audioBuffer.duration,
             sampleRate: audioBuffer.sampleRate,
             numberOfChannels: audioBuffer.numberOfChannels,
