@@ -17,7 +17,7 @@ body {
   grid-template-columns: 1fr 220px 1fr;
   gap: 14px;
   padding: 16px;
-  flex: 2;
+  flex: 1.45;
 }
 
 .bottom {
@@ -25,7 +25,7 @@ body {
   grid-template-columns: 2fr 1fr;
   gap: 14px;
   padding: 0 16px 16px;
-  flex: 1;
+  flex: 1.15;
 }
 
 .deck {
@@ -37,20 +37,93 @@ body {
   border: 1px solid #1e293b;
 }
 
+.active-deck {
+  border: 2px solid #38bdf8;
+}
+
 .deck-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.waveform {
-  height: 120px;
-  margin: 12px 0;
-  background: linear-gradient(90deg, #1e293b, #334155);
+.deck-header-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 8px;
+  gap: 8px;
+}
+
+.live-badge {
+  background: #22c55e;
+  color: black;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.activate-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.waveform {
+  margin: 12px 0 8px;
+}
+
+.deck .waveform {
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+
+.deck-waveform-bars {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 6px 0;
+}
+
+.deck-waveform-bar {
+  flex: 1;
+  min-width: 1px;
+  background: #38bdf8;
+  opacity: 0.9;
+  border-radius: 999px;
+}
+
+.deck-waveform-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f8fafc;
+  z-index: 10;
+}
+
+.deck-waveform-empty {
+  width: 100%;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.deck-time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-top: 6px;
+  color: #94a3b8;
 }
 
 .deck-info {
@@ -58,6 +131,37 @@ body {
   justify-content: space-between;
   font-size: 14px;
   color: #94a3b8;
+}
+
+.deck-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.deck-controls button {
+  flex: 1;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.deck-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.deck-track-title {
+  margin-top: 18px;
+  font-size: 14px;
+  color: #f8fafc;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crossfader {
@@ -109,6 +213,8 @@ body {
   border: 1px solid #1e293b;
   border-radius: 12px;
   padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .track-list h2 {
@@ -141,40 +247,6 @@ body {
   margin-top: 3px;
 }
 
-.deck-status {
-  font-size: 12px;
-  color: #64748b;
-  border: 1px solid #334155;
-  padding: 4px 8px;
-  border-radius: 999px;
-}
-
-.deck-status.playing {
-  color: #22c55e;
-  border-color: #22c55e;
-}
-
-.deck-controls {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.deck-controls button {
-  flex: 1;
-  background: #1e293b;
-  color: #f8fafc;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 10px;
-  cursor: pointer;
-}
-
-.deck-controls button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .load-buttons {
   display: flex;
   gap: 6px;
@@ -187,29 +259,6 @@ body {
   border-radius: 6px;
   padding: 6px 10px;
   cursor: pointer;
-}
-
-.crossfader-buttons {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  width: 100%;
-}
-
-.crossfader-buttons button {
-  flex: 1;
-  background: #1e293b;
-  color: #f8fafc;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.crossfader-buttons button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .right-panel {
@@ -231,6 +280,7 @@ body {
 
 .queue-row {
   display: flex;
+  align-items: center;
   gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid #1e293b;
@@ -239,6 +289,25 @@ body {
 .queue-row small {
   display: block;
   color: #94a3b8;
+}
+
+.queue-row-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.queue-row-actions button {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.queue-row-actions button:hover {
+  background: #334155;
 }
 
 .empty-queue {
@@ -263,63 +332,29 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
-.active-deck {
-  border: 2px solid #38bdf8;
+/* Layout Fix nach Waveform */
+.app {
+  overflow: hidden;
 }
 
-.deck-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.top {
+  min-height: 0;
 }
 
-.live-badge {
-  background: #22c55e;
-  color: black;
-  font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 6px;
+.deck {
+  min-width: 0;
+  min-height: 0;
 }
 
-.activate-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #f8fafc;
-  border-radius: 6px;
-  padding: 4px 8px;
-  cursor: pointer;
-  font-size: 11px;
+.deck .waveform {
+  height: 110px;
 }
 
-.queue-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid #1e293b;
+.deck-track-title {
+  font-size: 12px;
+  margin-top: 10px;
 }
 
-.queue-row-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-}
-
-.queue-row-actions button {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #f8fafc;
-  border-radius: 6px;
-  padding: 4px 8px;
-  cursor: pointer;
-}
-
-.queue-row-actions button:hover {
-  background: #334155;
-}
-
-.track-list {
-  max-height: 300px;
-  overflow-y: auto;
+.bottom {
+  min-height: 0;
 }

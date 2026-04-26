@@ -36,6 +36,22 @@ function App() {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   }, [queue]);
 
+  function handleTrackUpdated(updatedTrack: Track) {
+    setDeckATrack((current) =>
+      current?.id === updatedTrack.id ? updatedTrack : current,
+    );
+
+    setDeckBTrack((current) =>
+      current?.id === updatedTrack.id ? updatedTrack : current,
+    );
+
+    setQueue((currentQueue) =>
+      currentQueue.map((track) =>
+        track.id === updatedTrack.id ? updatedTrack : track,
+      ),
+    );
+  }
+
   function addToQueue(track: Track) {
     setQueue((prev) => [...prev, track]);
   }
@@ -165,6 +181,7 @@ function App() {
           onLoadA={setDeckATrack}
           onLoadB={setDeckBTrack}
           onAddToQueue={addToQueue}
+          onTrackUpdated={handleTrackUpdated}
         />
 
         <div className="right-panel">

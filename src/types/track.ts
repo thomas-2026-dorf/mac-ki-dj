@@ -17,6 +17,7 @@ export type TrackLoop = {
 };
 
 export type TrackAnalysis = {
+    waveform?: number[];
     status: TrackAnalysisStatus;
     analyzedAt?: string;
     detectedBpm?: number;

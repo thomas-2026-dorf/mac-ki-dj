@@ -13,6 +13,7 @@ type Props = {
     onLoadA: (track: Track) => void;
     onLoadB: (track: Track) => void;
     onAddToQueue: (track: Track) => void;
+    onTrackUpdated?: (track: Track) => void;
 };
 
 function getAnalysisLabel(track: Track) {
@@ -39,6 +40,7 @@ export default function TrackList({
     onLoadA,
     onLoadB,
     onAddToQueue,
+    onTrackUpdated,
 }: Props) {
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
@@ -162,22 +164,23 @@ export default function TrackList({
                             cuePoints: [],
                             loops: [],
                         }),
-                        ...(t.analysis || {
-                            cuePoints: [],
-                            loops: [],
-                        }),
                         status: "done" as const,
                         analyzedAt: new Date().toISOString(),
-                        durationSeconds: info.durationSeconds,
-                        sampleRate: info.sampleRate,
-                        cchannels: info.numberOfChannels,
                         detectedBpm: info.bpm ?? undefined,
+                        waveform: info.waveform,
+                        cuePoints: t.analysis?.cuePoints || [],
+                        loops: t.analysis?.loops || [],
                     },
                 };
             });
 
             setTracks(updated);
             saveLibrary(updated, musicFolder);
+
+            const updatedTrack = updated.find((t) => t.id === track.id);
+            if (updatedTrack) {
+                onTrackUpdated?.(updatedTrack);
+            }
 
         } catch (err) {
             console.error("Echte Analyse Fehler:", err);

@@ -5,23 +5,25 @@ export function generateWaveform(
     targetPoints = 1000,
 ): number[] {
     const samples = signal.samples;
-    const blockSize = Math.floor(samples.length / targetPoints);
-
-    const waveform: number[] = [];
+    const blockSize = Math.max(1, Math.floor(samples.length / targetPoints));
+    const rawWaveform: number[] = [];
 
     for (let i = 0; i < targetPoints; i++) {
         const start = i * blockSize;
         const end = Math.min(start + blockSize, samples.length);
 
-        let max = 0;
+        let sum = 0;
 
         for (let j = start; j < end; j++) {
-            const value = Math.abs(samples[j]);
-            if (value > max) max = value;
+            sum += Math.abs(samples[j]);
         }
 
-        waveform.push(max);
+        rawWaveform.push(sum / Math.max(1, end - start));
     }
 
-    return waveform;
+    const max = Math.max(...rawWaveform);
+
+    if (max <= 0) return rawWaveform;
+
+    return rawWaveform.map((value) => value / max);
 }

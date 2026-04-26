@@ -11,6 +11,15 @@ type DeckProps = {
     volume: number;
 };
 
+function formatTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
+
+    const minutes = Math.floor(seconds / 60);
+    const restSeconds = Math.floor(seconds % 60);
+
+    return `${String(minutes).padStart(2, "0")}:${String(restSeconds).padStart(2, "0")}`;
+}
+
 export default function Deck({
     title,
     track,
@@ -20,7 +29,13 @@ export default function Deck({
     volume,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const waveform = track?.analysis?.waveform ?? [];
+    const progressPercent =
+        duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
 
     useEffect(() => {
         if (audioRef.current) {
@@ -35,6 +50,8 @@ export default function Deck({
             audioRef.current.removeAttribute("src");
             audioRef.current.load();
             setIsPlaying(false);
+            setCurrentTime(0);
+            setDuration(0);
             return;
         }
 
@@ -43,6 +60,8 @@ export default function Deck({
         audioRef.current.src = convertFileSrc(track.url);
         audioRef.current.load();
         setIsPlaying(false);
+        setCurrentTime(0);
+        setDuration(0);
     }, [track]);
 
     async function handlePlayPause() {
@@ -71,6 +90,7 @@ export default function Deck({
         }
 
         setIsPlaying(false);
+        setCurrentTime(0);
     }
 
     return (
@@ -88,7 +108,39 @@ export default function Deck({
             </div>
 
             <div className="waveform">
-                <span>{track ? track.title : "Kein Track"}</span>
+                {track ? (
+                    <>
+                        <div className="deck-waveform-bars">
+                            {waveform.length > 0 ? (
+                                waveform.map((value, index) => (
+                                    <div
+                                        key={`${track.id}-wave-${index}`}
+                                        className="deck-waveform-bar"
+                                        style={{
+                                            height: `${Math.max(8, Math.min(100, value * 400))}%`,
+                                        }}
+                                    />
+                                ))
+                            ) : (
+                                <div className="deck-waveform-empty">
+                                    Waveform noch nicht analysiert
+                                </div>
+                            )}
+
+                            <div
+                                className="deck-waveform-playhead"
+                                style={{ left: `${progressPercent}%` }}
+                            />
+                        </div>
+
+                        <div className="deck-time">
+                            <span>{formatTime(currentTime)}</span>
+                            <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+                        </div>
+                    </>
+                ) : (
+                    <span>Kein Track</span>
+                )}
             </div>
 
             <div className="deck-info">
@@ -110,7 +162,14 @@ export default function Deck({
                 <button disabled={!track}>Sync</button>
             </div>
 
-            <audio ref={audioRef} />
+            {track && <div className="deck-track-title">{track.title} · Waveform: {waveform.length}</div>}
+
+            <audio
+                ref={audioRef}
+                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+                onEnded={() => setIsPlaying(false)}
+            />
         </div>
     );
 }

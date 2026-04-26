@@ -15,10 +15,10 @@
       "identifier": "fs:allow-read-file",
       "allow": [
         {
-          "path": "$HOME/Musik/**"
+          "path": "$HOME/**"
         },
         {
-          "path": "$HOME/Music/**"
+          "path": "/Volumes/**"
         }
       ]
     }
