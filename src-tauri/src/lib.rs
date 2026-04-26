@@ -50,6 +50,19 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         .make(&track.codec_params, &Default::default())
         .map_err(|err| format!("Decoder Fehler: {}", err))?;
 
+    let mut aubio_tempo = {
+        use aubio::{OnsetMode, Tempo};
+
+        Tempo::new(OnsetMode::default(), 1024, 512, sample_rate as u32)
+            .map_err(|err| format!("Aubio Tempo Fehler: {:?}", err))?
+            .with_silence(-70.0)
+            .with_threshold(0.3)
+    };
+
+    let aubio_hop_size = aubio_tempo.get_hop();
+    let mut aubio_input: Vec<f32> = Vec::with_capacity(aubio_hop_size);
+    let mut aubio_beats: Vec<f64> = Vec::new();
+
     let window_size = (sample_rate * 0.05) as u64;
     let mut sample_count: u64 = 0;
     let mut packet_count: u64 = 0;
@@ -85,6 +98,22 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             current_sum += mono.abs();
             current_count += 1;
             sample_count += 1;
+
+            aubio_input.push(mono as f32);
+            if aubio_input.len() == aubio_hop_size {
+                match aubio_tempo.do_result(&aubio_input[..]) {
+                    Ok(value) => {
+                        if value > 0.0 {
+                            aubio_beats.push(aubio_tempo.get_last_s() as f64);
+                        }
+                    }
+                    Err(err) => {
+                        println!("Aubio Analyse Warnung: {:?}", err);
+                    }
+                }
+
+                aubio_input.clear();
+            }
 
             if current_count >= window_size {
                 energies.push(current_sum / current_count as f64);
@@ -180,6 +209,18 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         peak_times.len(),
         bpm
     );
+
+    println!(
+        "Aubio Analyse: beats={}, bpm={}, confidence={}",
+        aubio_beats.len(),
+        aubio_tempo.get_bpm(),
+        aubio_tempo.get_confidence()
+    );
+
+    if !aubio_beats.is_empty() {
+        let preview: Vec<f64> = aubio_beats.iter().take(10).copied().collect();
+        println!("Aubio Beats Preview: {:?}", preview);
+    }
 
     Ok(AudioAnalysisBackendResult {
         bpm,
