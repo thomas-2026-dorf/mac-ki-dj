@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readDir, readFile } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 
 import { demoTracks } from "../data/demoTracks";
 import type { Track } from "../types/track";
@@ -316,6 +317,85 @@ function openOnlineSongCheck(track: Track) {
     window.open(url, "_blank");
 }
 
+type BackendAudioAnalysisResult = {
+    bpm: number;
+    beats: number[];
+    grid_start_seconds: number;
+};
+
+async function testBackendAnalysis(track: Track) {
+    if (!track.url) {
+        alert("Kein Dateipfad vorhanden");
+        return;
+    }
+
+    try {
+        const result = await invoke<BackendAudioAnalysisResult>("analyze_audio_file", {
+            path: track.url,
+        });
+
+        console.log("Backend Analyse Dummy:", result);
+
+        const updatedTracks = tracks.map((currentTrack) => {
+            if (currentTrack.id !== track.id) return currentTrack;
+
+            return {
+                ...currentTrack,
+                bpm: currentTrack.bpm || Math.round(result.bpm),
+                analysis: {
+                    ...(currentTrack.analysis || {
+                        cuePoints: [],
+                        loops: [],
+                    }),
+                    status: "done" as const,
+                    analyzedAt: new Date().toISOString(),
+                    detectedBpm: Math.round(result.bpm),
+                    beatGridStartSeconds: result.grid_start_seconds,
+                    bpmSource: "auto" as const,
+                    bpmConfidence: "medium" as const,
+                    bpmConfirmed: false,
+                    cuePoints: [
+                        ...(currentTrack.analysis?.cuePoints || []),
+                        {
+                            id: `${currentTrack.id}-backend-grid-start`,
+                            name: "Backend Grid Start",
+                            timeSeconds: result.grid_start_seconds,
+                            type: "drum" as const,
+                        },
+                    ],
+                    loops: currentTrack.analysis?.loops || [],
+                    debug: {
+                        onsetCount: currentTrack.analysis?.debug?.onsetCount || 0,
+                        bpmCandidates: currentTrack.analysis?.debug?.bpmCandidates || [],
+                        tempogramCandidates: currentTrack.analysis?.debug?.tempogramCandidates || [],
+                        backendBeats: result.beats,
+                        backendGridStartSeconds: result.grid_start_seconds,
+                    },
+                },
+            };
+        });
+
+        setTracks(updatedTracks);
+        saveLibrary(updatedTracks, musicFolder);
+
+        const updatedTrack = updatedTracks.find((currentTrack) => currentTrack.id === track.id);
+        if (updatedTrack) {
+            onTrackUpdated?.(updatedTrack);
+        }
+
+        alert(
+            "Backend Analyse gespeichert\n" +
+            "BPM: " + result.bpm + "\n" +
+            "Beat-Abstand: " + (60 / result.bpm).toFixed(3) + " Sekunden\n" +
+            "Beats gespeichert: " + result.beats.length + "\n" +
+            "Grid Start: " + result.grid_start_seconds
+        );
+    } catch (err) {
+        console.error("Backend Analyse Fehler:", err);
+        alert("Backend Analyse Fehler: " + String(err));
+    }
+}
+
 function getRecommendedBpm(track: Track): number | null {
     const candidates = track.analysis?.debug?.bpmCandidates || [];
     const tempogram = track.analysis?.debug?.tempogramCandidates || [];
@@ -528,6 +608,10 @@ alert("BPM gesetzt auf " + recommended);
 
                         <button type="button" onClick={() => runRealBasicAnalysis(track)}>
                             Audio testen
+                        </button>
+
+                        <button type="button" onClick={() => testBackendAnalysis(track)}>
+                            Backend testen
                         </button>
 
                     </div>
