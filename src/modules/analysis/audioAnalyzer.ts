@@ -3,8 +3,9 @@ import { calculateEnergyFrames } from "./energy";
 import { detectOnsets } from "./onsets";
 import { prepareSignal } from "./signal";
 import { generateWaveform } from "./waveform";
-import { calculateTempogramBpmCandidates } from "./tempogram";
 import { detectBasicCuePoints } from "./cuepoints";
+import { calculateTempogramBpmCandidates } from "./tempogram";
+import { calculateBpmConfidence } from "./confidence";
 
 import type { AudioAnalysisResult } from "./types";
 
@@ -27,9 +28,16 @@ export async function analyzeAudioBuffer(
         const signal = prepareSignal(audioBuffer);
         const energyFrames = calculateEnergyFrames(signal);
         const onsets = detectOnsets(energyFrames);
+
         const bpmCandidates = calculateBpmCandidates(onsets);
         const tempogramCandidates = calculateTempogramBpmCandidates(onsets);
         const bpm = selectBestBpm(bpmCandidates, tempogramCandidates);
+        const bpmConfidence = calculateBpmConfidence(
+            bpm,
+            bpmCandidates,
+            tempogramCandidates,
+        );
+
         const waveform = generateWaveform(signal);
         const cuePoints = detectBasicCuePoints(onsets);
 
@@ -39,6 +47,7 @@ export async function analyzeAudioBuffer(
             numberOfChannels: audioBuffer.numberOfChannels,
 
             bpm,
+            bpmConfidence,
             bpmCandidates,
             onsetCount: onsets.length,
 

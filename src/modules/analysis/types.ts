@@ -46,6 +46,7 @@ export type AudioAnalysisResult = {
     numberOfChannels: number;
 
     bpm: number | null;
+    bpmConfidence: "high" | "medium" | "low";
     bpmCandidates: BpmCandidate[];
     onsetCount: number;
 

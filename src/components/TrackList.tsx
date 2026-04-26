@@ -169,7 +169,7 @@ export default function TrackList({
                         analyzedAt: new Date().toISOString(),
                         detectedBpm: info.bpm ?? undefined,
                         bpmSource: "auto" as const,
-                        bpmConfidence: "medium" as const,
+                        bpmConfidence: info.bpmConfidence,
                         bpmConfirmed: false,
                         waveform: info.waveform,
                         debug: info.debug,
@@ -304,6 +304,12 @@ export default function TrackList({
                         <small>
                             {track.artist} · {track.genre}
                         </small>
+                        {track.analysis?.bpmConfidence && (
+                            <small style={{ color: track.analysis.bpmConfidence === "high" ? "lightgreen" : track.analysis.bpmConfidence === "medium" ? "orange" : "red" }}>
+                                BPM-Sicherheit: {track.analysis.bpmConfidence}
+                            </small>
+                        )}
+
                         {track.analysis?.debug && (
                             <small style={{ color: "#888" }}>
                                 Onsets: {track.analysis.debug.onsetCount} · Kandidaten: {track.analysis.debug.bpmCandidates.join(", ")} · Tempogram: {track.analysis.debug.tempogramCandidates?.join(", ") || "-"}
