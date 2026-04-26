@@ -358,3 +358,26 @@ body {
 .bottom {
   min-height: 0;
 }
+
+.track-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #020617;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.track-search::placeholder {
+  color: #64748b;
+}
+
+.track-search {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 8px 0 10px;
+}

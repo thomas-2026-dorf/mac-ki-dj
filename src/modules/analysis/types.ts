@@ -36,6 +36,11 @@ export type CuePoint = {
 };
 
 export type AudioAnalysisResult = {
+    debug?: {
+        onsetCount: number;
+        bpmCandidates: number[];
+        tempogramCandidates: number[];
+    };
     durationSeconds: number;
     sampleRate: number;
     numberOfChannels: number;

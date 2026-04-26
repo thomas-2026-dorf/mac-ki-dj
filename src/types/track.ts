@@ -18,9 +18,22 @@ export type TrackLoop = {
 
 export type TrackAnalysis = {
     waveform?: number[];
+
+    debug?: {
+        onsetCount: number;
+        bpmCandidates: number[];
+        tempogramCandidates: number[];
+    };
+
     status: TrackAnalysisStatus;
     analyzedAt?: string;
     detectedBpm?: number;
+
+    bpmSource?: "auto" | "manual";
+    bpmConfidence?: "high" | "medium" | "low";
+    bpmConfirmed?: boolean;
+    manualBpm?: number;
+
     detectedKey?: string;
     introEndSeconds?: number;
     outroStartSeconds?: number;

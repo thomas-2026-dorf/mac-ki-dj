@@ -44,6 +44,7 @@ export default function TrackList({
 }: Props) {
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
+    const [searchText, setSearchText] = useState("");
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -167,7 +168,11 @@ export default function TrackList({
                         status: "done" as const,
                         analyzedAt: new Date().toISOString(),
                         detectedBpm: info.bpm ?? undefined,
+                        bpmSource: "auto" as const,
+                        bpmConfidence: "medium" as const,
+                        bpmConfirmed: false,
                         waveform: info.waveform,
+                        debug: info.debug,
                         cuePoints: t.analysis?.cuePoints || [],
                         loops: t.analysis?.loops || [],
                     },
@@ -240,6 +245,22 @@ export default function TrackList({
                 ? []
                 : demoTracks;
 
+    const filteredTracks = list.filter((track) => {
+        const query = searchText.trim().toLowerCase();
+        if (!query) return true;
+
+        return [
+            track.title,
+            track.artist,
+            track.genre,
+            String(track.bpm || ""),
+            track.key,
+        ]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+    });
+
     return (
         <div className="track-list">
             <div className="track-list-title-row">
@@ -260,6 +281,13 @@ export default function TrackList({
                 </div>
             )}
 
+            <input
+                className="track-search"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Song, Interpret, Genre, BPM suchen..."
+            />
+
             <div className="track-list-header">
                 <span>Titel</span>
                 <span>BPM</span>
@@ -269,13 +297,18 @@ export default function TrackList({
                 <span></span>
             </div>
 
-            {list.map((track) => (
+            {filteredTracks.map((track) => (
                 <div className="track-row" key={track.id}>
                     <div>
                         <strong>{track.title}</strong>
                         <small>
                             {track.artist} · {track.genre}
                         </small>
+                        {track.analysis?.debug && (
+                            <small style={{ color: "#888" }}>
+                                Onsets: {track.analysis.debug.onsetCount} · Kandidaten: {track.analysis.debug.bpmCandidates.join(", ")} · Tempogram: {track.analysis.debug.tempogramCandidates?.join(", ") || "-"}
+                            </small>
+                        )}
 
                         <div style={{ color: getAnalysisColor(track), fontSize: "12px" }}>
                             {getAnalysisLabel(track)}
