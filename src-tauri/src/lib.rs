@@ -1,4 +1,5 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use stratum_dsp as _; // nur Test: Library laden
+                      // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::Serialize;
 
 #[tauri::command]
@@ -26,8 +27,8 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     use symphonia::core::probe::Hint;
     use symphonia::default::{get_codecs, get_probe};
 
-    let file = File::open(&path)
-        .map_err(|err| format!("Datei konnte nicht geöffnet werden: {}", err))?;
+    let file =
+        File::open(&path).map_err(|err| format!("Datei konnte nicht geöffnet werden: {}", err))?;
 
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -40,9 +41,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
 
     let mut format = probed.format;
 
-    let track = format
-        .default_track()
-        .ok_or("Kein Audio-Track gefunden")?;
+    let track = format.default_track().ok_or("Kein Audio-Track gefunden")?;
 
     let sample_rate = track.codec_params.sample_rate.unwrap_or(44100) as f64;
 
@@ -69,6 +68,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     let mut current_sum = 0.0_f64;
     let mut current_count: u64 = 0;
     let mut energies: Vec<f64> = Vec::new();
+    let mut stratum_samples: Vec<f32> = Vec::new();
 
     loop {
         if packet_count >= 4000 {
@@ -99,6 +99,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             current_count += 1;
             sample_count += 1;
 
+            stratum_samples.push(mono as f32);
             aubio_input.push(mono as f32);
             if aubio_input.len() == aubio_hop_size {
                 match aubio_tempo.do_result(&aubio_input[..]) {
@@ -216,6 +217,36 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             .collect()
     };
 
+    // === STRATUM DSP TEST START ===
+    match stratum_dsp::analyze_audio(
+        &stratum_samples,
+        sample_rate as u32,
+        stratum_dsp::AnalysisConfig::default(),
+    ) {
+        Ok(result) => {
+            println!(
+                "Stratum Analyse: bpm={}, bpm_confidence={}, key={}, camelot={}, key_confidence={}, beats={}, downbeats={}",
+                result.bpm,
+                result.bpm_confidence,
+                result.key.name(),
+                result.key.numerical(),
+                result.key_confidence,
+                result.beat_grid.beats.len(),
+                result.beat_grid.downbeats.len()
+            );
+
+            let beat_preview: Vec<f32> = result.beat_grid.beats.iter().take(10).copied().collect();
+            let downbeat_preview: Vec<f32> = result.beat_grid.downbeats.iter().take(10).copied().collect();
+
+            println!("Stratum Beats Preview: {:?}", beat_preview);
+            println!("Stratum Downbeats Preview: {:?}", downbeat_preview);
+        }
+        Err(err) => {
+            println!("Stratum Analyse Fehler: {:?}", err);
+        }
+    }
+    // === STRATUM DSP TEST END ===
+
     println!(
         "Rust Analyse: samples={}, peaks={}, bpm={}",
         sample_count,
@@ -246,8 +277,8 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         let analysis_json_path = parent_dir.join("tkdj-analysis.json");
 
         let mut root: serde_json::Value = if analysis_json_path.exists() {
-            let existing = std::fs::read_to_string(&analysis_json_path)
-                .unwrap_or_else(|_| "{}".to_string());
+            let existing =
+                std::fs::read_to_string(&analysis_json_path).unwrap_or_else(|_| "{}".to_string());
 
             serde_json::from_str(&existing).unwrap_or_else(|_| serde_json::json!({}))
         } else {
@@ -284,13 +315,10 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         beat_interval_seconds,
         beats,
         grid_start_seconds,
-        file_size_bytes: std::fs::metadata(&path)
-            .map(|m| m.len())
-            .unwrap_or(0),
+        file_size_bytes: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
         sample_count,
     })
 }
-
 
 fn chrono_like_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};

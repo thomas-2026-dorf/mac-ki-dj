@@ -4,7 +4,16 @@ export type TrackCuePoint = {
     id: string;
     name: string;
     timeSeconds: number;
-    type: "start" | "intro" | "drum" | "vocal" | "drop" | "break" | "outro" | "loop" | "transition";
+    type:
+    | "start"
+    | "intro"
+    | "drum"
+    | "vocal"
+    | "drop"
+    | "break"
+    | "outro"
+    | "loop"
+    | "transition";
 };
 
 export type TrackLoop = {
@@ -16,8 +25,45 @@ export type TrackLoop = {
     purpose: "transition" | "outro-builder" | "emergency";
 };
 
+export type TrackExternalAnalysis = {
+    source: "mixed-in-key" | "manual" | "other";
+    importedAt?: string;
+
+    bpm?: number;
+    key?: string;
+    energy?: number;
+
+    genre?: string;
+    year?: number;
+
+    mood?: "warmup" | "dance" | "peak" | "cooldown";
+    rating?: number;
+    comment?: string;
+
+    cuePoints?: TrackCuePoint[];
+    loops?: TrackLoop[];
+
+    mixInSeconds?: number;
+    mixOutSeconds?: number;
+    introEndSeconds?: number;
+    outroStartSeconds?: number;
+};
+
 export type TrackAnalysis = {
+    status: TrackAnalysisStatus;
+    analyzedAt?: string;
+
+    /**
+     * Altbestand / Übergang:
+     * Diese Felder bleiben vorerst drin, damit bestehende Komponenten nicht brechen.
+     * Wir nutzen sie später nicht mehr als Hauptstrategie.
+     */
     waveform?: number[];
+    detectedBpm?: number;
+    detectedKey?: string;
+    beatGridStartSeconds?: number;
+    beats?: number[];
+    analysisVersion?: string;
 
     debug?: {
         onsetCount: number;
@@ -25,41 +71,55 @@ export type TrackAnalysis = {
         tempogramCandidates: number[];
     };
 
-    status: TrackAnalysisStatus;
-    analyzedAt?: string;
-    detectedBpm?: number;
-    beatGridStartSeconds?: number;
-
-    // NEU: echte Beatliste (Aubio)
-    beats?: number[];
-
-    // NEU: Analyse-Version für spätere Updates
-    analysisVersion?: string;
-
-    bpmSource?: "auto" | "manual";
+    bpmSource?: "auto" | "manual" | "external";
     bpmConfidence?: "high" | "medium" | "low";
     bpmConfirmed?: boolean;
     manualBpm?: number;
 
-    detectedKey?: string;
     introEndSeconds?: number;
     outroStartSeconds?: number;
     cuePoints: TrackCuePoint[];
     loops: TrackLoop[];
+
     hasDjOutro?: boolean;
     outroEditPath?: string;
     note?: string;
+
+    /**
+     * Neue Hauptstrategie:
+     * externe oder manuell gepflegte DJ-Daten.
+     */
+    external?: TrackExternalAnalysis;
 };
 
 export type Track = {
     id: string;
     title: string;
     artist: string;
+
+    /**
+     * Diese Hauptfelder sollen später aus Mixed in Key / manueller Pflege kommen.
+     */
     bpm: number;
     key: string;
     energy: number;
-    duration: string;
     genre: string;
+
+    duration: string;
     url?: string;
+
+    year?: number;
+    mood?: "warmup" | "dance" | "peak" | "cooldown";
+    favorite?: boolean;
+    rating?: number;
+
+    mixInSeconds?: number;
+    mixOutSeconds?: number;
+    introEndSeconds?: number;
+    outroStartSeconds?: number;
+
+    cuePoints?: TrackCuePoint[];
+    loops?: TrackLoop[];
+
     analysis?: TrackAnalysis;
 };
