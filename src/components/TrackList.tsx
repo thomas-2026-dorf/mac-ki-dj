@@ -77,6 +77,20 @@ export default function TrackList({
     async function loadTracksFromFolder(folder: string) {
         const entries = await readDir(folder);
 
+        // === Analyse JSON laden ===
+        let analysisMap: Record<string, any> = {};
+        try {
+            const analysisPath = `${folder}/tkdj-analysis.json`;
+            const jsonBytes = await readFile(analysisPath);
+            const jsonText = new TextDecoder().decode(jsonBytes);
+            const parsed = JSON.parse(jsonText);
+
+            analysisMap = parsed.tracks || {};
+            console.log("Analyse JSON geladen:", analysisMap);
+        } catch (e) {
+            console.log("Keine Analyse JSON gefunden");
+        }
+
         const mp3Files: Track[] = entries
             .filter((entry) => {
                 const name = entry.name || "";
@@ -85,21 +99,34 @@ export default function TrackList({
             .map((entry, index) => {
                 const name = entry.name || "Unbekannt.mp3";
 
+                const analysisData = analysisMap[name];
+
                 return {
                     id: `${folder}-${index}`,
                     title: name.replace(/\.mp3$/i, ""),
                     artist: "Local",
-                    bpm: 0,
+                    bpm: analysisData?.bpm ? Math.round(analysisData.bpm) : 0,
                     key: "-",
                     energy: 0,
                     duration: "00:00",
                     genre: "Local",
                     url: `${folder}/${name}`,
-                    analysis: {
-                        status: "none",
-                        cuePoints: [],
-                        loops: [],
-                    },
+                    analysis: analysisData
+                        ? {
+                              status: "done",
+                              analyzedAt: analysisData.analyzedAt,
+                              analysisVersion: analysisData.analysisVersion,
+                              detectedBpm: analysisData.bpm,
+                              beatGridStartSeconds: analysisData.gridStartSeconds,
+                              beats: analysisData.beats,
+                              cuePoints: [],
+                              loops: [],
+                          }
+                        : {
+                              status: "none",
+                              cuePoints: [],
+                              loops: [],
+                          },
                 };
             });
 
