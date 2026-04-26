@@ -155,7 +155,7 @@ export default function TrackList({
                 return {
                     ...t,
                     duration: formatDuration(info.durationSeconds),
-                    bpm: info.estimatedBpm ?? t.bpm,
+                    bpm: info.bpm ?? t.bpm,
 
                     analysis: {
                         ...(t.analysis || {
@@ -171,7 +171,7 @@ export default function TrackList({
                         durationSeconds: info.durationSeconds,
                         sampleRate: info.sampleRate,
                         cchannels: info.numberOfChannels,
-                        detectedBpm: info.estimatedBpm ?? undefined,
+                        detectedBpm: info.bpm ?? undefined,
                     },
                 };
             });
