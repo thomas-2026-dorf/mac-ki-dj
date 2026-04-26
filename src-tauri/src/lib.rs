@@ -21,7 +21,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     println!("Analyze audio file requested: {}", path);
 
     use std::fs::File;
-    use symphonia::core::audio::{AudioBufferRef, Signal};
+    use symphonia::core::audio::SampleBuffer;
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::probe::Hint;
     use symphonia::default::{get_codecs, get_probe};
@@ -44,17 +44,24 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         .default_track()
         .ok_or("Kein Audio-Track gefunden")?;
 
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100) as f64;
+
     let mut decoder = get_codecs()
         .make(&track.codec_params, &Default::default())
         .map_err(|err| format!("Decoder Fehler: {}", err))?;
 
+    let window_size = (sample_rate * 0.05) as u64;
     let mut sample_count: u64 = 0;
     let mut packet_count: u64 = 0;
+    let mut current_sum = 0.0_f64;
+    let mut current_count: u64 = 0;
+    let mut energies: Vec<f64> = Vec::new();
 
     loop {
-        if packet_count >= 200 {
+        if packet_count >= 1200 {
             break;
         }
+
         let packet = match format.next_packet() {
             Ok(packet) => packet,
             Err(_) => break,
@@ -67,23 +74,107 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             Err(_) => continue,
         };
 
-        match decoded {
-            AudioBufferRef::F32(buf) => sample_count += buf.frames() as u64,
-            AudioBufferRef::S16(buf) => sample_count += buf.frames() as u64,
-            AudioBufferRef::U8(buf) => sample_count += buf.frames() as u64,
-            _ => {}
+        let spec = *decoded.spec();
+        let channels = spec.channels.count().max(1);
+        let mut sample_buffer = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+        sample_buffer.copy_interleaved_ref(decoded);
+
+        for frame in sample_buffer.samples().chunks(channels) {
+            let mono = frame.iter().map(|value| *value as f64).sum::<f64>() / channels as f64;
+
+            current_sum += mono.abs();
+            current_count += 1;
+            sample_count += 1;
+
+            if current_count >= window_size {
+                energies.push(current_sum / current_count as f64);
+                current_sum = 0.0;
+                current_count = 0;
+            }
         }
     }
 
-    println!("Sample Count: {}", sample_count);
+    if current_count > 0 {
+        energies.push(current_sum / current_count as f64);
+    }
 
-    let bpm = 120.0;
-    let grid_start_seconds = 0.5;
+    let average_energy = if energies.is_empty() {
+        0.0
+    } else {
+        energies.iter().sum::<f64>() / energies.len() as f64
+    };
+
+    let mut peak_times: Vec<f64> = Vec::new();
+    let min_peak_distance_seconds = 0.28;
+    let window_seconds = 0.05;
+
+    for index in 1..energies.len().saturating_sub(1) {
+        let energy = energies[index];
+        let is_peak = energy > energies[index - 1]
+            && energy > energies[index + 1]
+            && energy > average_energy * 1.25;
+
+        if is_peak {
+            let time = index as f64 * window_seconds;
+
+            if peak_times
+                .last()
+                .map(|last| time - last >= min_peak_distance_seconds)
+                .unwrap_or(true)
+            {
+                peak_times.push(time);
+            }
+        }
+    }
+
+    let mut intervals: Vec<f64> = peak_times
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .filter(|interval| *interval >= 0.30 && *interval <= 1.00)
+        .collect();
+
+    intervals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let median_interval = if intervals.is_empty() {
+        0.5
+    } else {
+        intervals[intervals.len() / 2]
+    };
+
+    let mut bpm = 60.0 / median_interval;
+
+    // Normalize BPM into DJ range
+    while bpm < 80.0 {
+        bpm *= 2.0;
+    }
+
+    while bpm > 160.0 {
+        bpm /= 2.0;
+    }
+
+    // Snap to typical DJ BPM ranges (reduces noise)
+    let rounded = (bpm * 2.0).round() / 2.0;
+
+    // small correction for common overshoot
+    let bpm = if rounded > 132.0 && rounded < 138.0 {
+        rounded - 4.0
+    } else {
+        rounded
+    };
+
+    let grid_start_seconds = peak_times.first().copied().unwrap_or(0.5);
     let beat_interval_seconds = 60.0 / bpm;
 
     let beats: Vec<f64> = (0..200)
         .map(|index| grid_start_seconds + (index as f64 * beat_interval_seconds))
         .collect();
+
+    println!(
+        "Rust Analyse: samples={}, peaks={}, bpm={}",
+        sample_count,
+        peak_times.len(),
+        bpm
+    );
 
     Ok(AudioAnalysisBackendResult {
         bpm,
