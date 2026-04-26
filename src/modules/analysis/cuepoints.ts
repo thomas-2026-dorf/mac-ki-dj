@@ -18,17 +18,29 @@ export type CuePoint = {
 export function detectBasicCuePoints(onsets: Onset[]): CuePoint[] {
     if (onsets.length === 0) return [];
 
-    const firstStrongOnset = [...onsets]
-        .sort((a, b) => b.strength - a.strength)
-        .find((onset) => onset.timeSeconds >= 0.5);
+    const introOnsets = onsets.filter(
+        (onset) => onset.timeSeconds >= 0.5 && onset.timeSeconds <= 20,
+    );
 
-    if (!firstStrongOnset) return [];
+    const fallbackOnsets = onsets.filter(
+        (onset) => onset.timeSeconds >= 0.5 && onset.timeSeconds <= 40,
+    );
+
+    const candidates = introOnsets.length > 0 ? introOnsets : fallbackOnsets;
+
+    if (candidates.length === 0) return [];
+
+    const averageStrength =
+        candidates.reduce((sum, onset) => sum + onset.strength, 0) / candidates.length;
+
+    const firstUsableOnset =
+        candidates.find((onset) => onset.strength >= averageStrength * 0.75) ?? candidates[0];
 
     return [
         {
             id: "first-beat",
-            label: "Erster Beat",
-            timeSeconds: firstStrongOnset.timeSeconds,
+            label: "Erster Beat / Intro",
+            timeSeconds: firstUsableOnset.timeSeconds,
             kind: "first_beat",
         },
     ];

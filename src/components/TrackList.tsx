@@ -177,13 +177,19 @@ export default function TrackList({
                         status: "done" as const,
                         analyzedAt: new Date().toISOString(),
                         detectedBpm: info.bpm ?? undefined,
+                        beatGridStartSeconds: info.cuePoints[0]?.timeSeconds ?? 0,
                         detectedKey: info.camelotKey ?? info.key ?? undefined,
                         bpmSource: "auto" as const,
                         bpmConfidence: info.bpmConfidence,
                         bpmConfirmed: false,
                         waveform: info.waveform,
                         debug: info.debug,
-                        cuePoints: t.analysis?.cuePoints || [],
+                        cuePoints: info.cuePoints.map((cue) => ({
+                            id: cue.id,
+                            name: cue.label,
+                            timeSeconds: cue.timeSeconds,
+                            type: cue.kind === "first_beat" ? "drum" as const : "transition" as const,
+                        })),
                         loops: t.analysis?.loops || [],
                     },
                 };
@@ -203,7 +209,7 @@ export default function TrackList({
         }
     }
 
-    function runFakeAnalysis(track: Track): Track {
+function runFakeAnalysis(track: Track): Track {
         return {
             ...track,
             bpm: track.bpm || 124,

@@ -4,7 +4,7 @@ export type TrackCuePoint = {
     id: string;
     name: string;
     timeSeconds: number;
-    type: "start" | "intro" | "drop" | "break" | "outro" | "loop";
+    type: "start" | "intro" | "drum" | "vocal" | "drop" | "break" | "outro" | "loop" | "transition";
 };
 
 export type TrackLoop = {
@@ -28,6 +28,7 @@ export type TrackAnalysis = {
     status: TrackAnalysisStatus;
     analyzedAt?: string;
     detectedBpm?: number;
+    beatGridStartSeconds?: number;
 
     bpmSource?: "auto" | "manual";
     bpmConfidence?: "high" | "medium" | "low";

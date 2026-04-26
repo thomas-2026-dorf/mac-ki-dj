@@ -81,35 +81,25 @@ body {
   flex-direction: column;
 }
 
-.deck-waveform-bars {
-  position: relative;
-  width: 100%;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  background: #020617;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  overflow: hidden;
-  padding: 6px 0;
-}
+
 
 .deck-waveform-bar {
-  flex: 1;
-  min-width: 1px;
-  background: #38bdf8;
-  opacity: 0.9;
-  border-radius: 999px;
+    flex: 1;
+    min-width: 1px;
+    max-width: 3px;
+    border-radius: 2px;
+    opacity: 0.9;
 }
 
 .deck-waveform-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: #f8fafc;
-  z-index: 10;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #ffffff;
+    transform: translateX(-50%);
+    z-index: 20;
+    box-shadow: 0 0 12px rgba(255,255,255,0.8);
 }
 
 .deck-waveform-empty {
@@ -119,24 +109,30 @@ body {
 }
 
 .deck-time {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  margin-top: 6px;
-  color: #94a3b8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #cbd5e1;
 }
 
 .deck-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 14px;
-  color: #94a3b8;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 18px;
+    margin-bottom: 14px;
 }
 
 .deck-controls {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+    margin-bottom: 8px;
 }
 
 .deck-controls button {
@@ -420,4 +416,145 @@ body {
   border-radius: 6px;
   padding: 5px 7px;
   cursor: pointer;
+}
+
+
+.deck-cue-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    transform: translateX(-50%);
+    z-index: 12;
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(34,197,94,0.8);
+}
+
+.deck-cue-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    margin-bottom: 12px;
+    font-size: 11px;
+}
+
+.deck-cue-label {
+    padding: 3px 7px;
+    border-radius: 999px;
+    color: #111;
+    font-weight: 700;
+}
+
+.deck-cue-drum {
+    background: #22c55e;
+}
+
+.deck-cue-vocal {
+    background: #ef4444;
+}
+
+.deck-cue-drop {
+    background: #a855f7;
+}
+
+.deck-cue-break {
+    background: #f97316;
+}
+
+.deck-cue-outro {
+    background: #38bdf8;
+}
+
+.deck-cue-loop,
+.deck-cue-transition {
+    background: #eab308;
+}
+
+.deck-cue-start,
+.deck-cue-intro {
+    background: #ffffff;
+}
+
+
+.deck-waveform-container {
+    position: relative;
+}
+
+.deck-beat-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 110px;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.deck-beat-marker {
+    position: absolute;
+    top: 8px;
+    height: 92px;
+    border-left: 1px solid rgba(255, 255, 255, 0.16);
+    transform: translateX(-50%);
+    z-index: 6;
+    color: rgba(255,255,255,0.65);
+    font-size: 12px;
+    font-weight: 800;
+    padding-left: 3px;
+}
+
+.deck-beat-marker.beat-1 {
+    border-left: 3px solid rgba(255, 255, 255, 0.9);
+    color: #ffffff;
+}
+
+.deck-beat-marker.beat-2,
+.deck-beat-marker.beat-3,
+.deck-beat-marker.beat-4 {
+    color: #888;
+}
+
+
+.deck-waveform-bar.wave-low {
+    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+}
+
+.deck-waveform-bar.wave-mid {
+    background: linear-gradient(180deg, #22d3ee 0%, #06b6d4 45%, #2563eb 100%);
+}
+
+.deck-waveform-bar.wave-hot {
+    background: linear-gradient(180deg, #fb7185 0%, #ec4899 45%, #7c3aed 100%);
+}
+
+
+.deck-beatgrid-stage {
+    position: relative;
+    cursor: pointer;
+    height: 118px;
+    padding: 18px 8px 10px;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #020617;
+}
+
+.deck-mini-waveform {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 12px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    opacity: 0.45;
+}
+
+.deck-mini-waveform .deck-waveform-bar {
+    flex: 1;
+    min-width: 1px;
+    max-width: 3px;
+    border-radius: 2px;
 }

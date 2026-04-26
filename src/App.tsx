@@ -36,6 +36,36 @@ function App() {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   }, [queue]);
 
+  function updateTrackGridStart(track: Track, seconds: number): Track {
+    return {
+      ...track,
+      analysis: {
+        ...(track.analysis || {
+          status: "none" as const,
+          cuePoints: [],
+          loops: [],
+        }),
+        beatGridStartSeconds: seconds,
+        cuePoints: track.analysis?.cuePoints || [],
+        loops: track.analysis?.loops || [],
+      },
+    };
+  }
+
+  function handleSetGridStart(deck: "A" | "B", seconds: number) {
+    if (deck === "A") {
+      setDeckATrack((current) =>
+        current ? updateTrackGridStart(current, seconds) : current,
+      );
+    }
+
+    if (deck === "B") {
+      setDeckBTrack((current) =>
+        current ? updateTrackGridStart(current, seconds) : current,
+      );
+    }
+  }
+
   function handleTrackUpdated(updatedTrack: Track) {
     setDeckATrack((current) =>
       current?.id === updatedTrack.id ? updatedTrack : current,
@@ -154,6 +184,7 @@ function App() {
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
           onPlay={() => prepareNextForDeck("A")}
+          onSetGridStart={(seconds) => handleSetGridStart("A", seconds)}
           volume={volumeA}
         />
 
@@ -172,6 +203,7 @@ function App() {
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
           onPlay={() => prepareNextForDeck("B")}
+          onSetGridStart={(seconds) => handleSetGridStart("B", seconds)}
           volume={volumeB}
         />
       </div>
