@@ -319,8 +319,11 @@ function openOnlineSongCheck(track: Track) {
 
 type BackendAudioAnalysisResult = {
     bpm: number;
+    beat_interval_seconds: number;
     beats: number[];
     grid_start_seconds: number;
+    file_size_bytes: number;
+    sample_count: number;
 };
 
 async function testBackendAnalysis(track: Track) {
@@ -349,8 +352,10 @@ async function testBackendAnalysis(track: Track) {
                     }),
                     status: "done" as const,
                     analyzedAt: new Date().toISOString(),
+                    analysisVersion: "aubio-v1",
                     detectedBpm: Math.round(result.bpm),
                     beatGridStartSeconds: result.grid_start_seconds,
+                    beats: result.beats,
                     bpmSource: "auto" as const,
                     bpmConfidence: "medium" as const,
                     bpmConfirmed: false,

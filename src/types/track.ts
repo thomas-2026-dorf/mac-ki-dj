@@ -30,6 +30,12 @@ export type TrackAnalysis = {
     detectedBpm?: number;
     beatGridStartSeconds?: number;
 
+    // NEU: echte Beatliste (Aubio)
+    beats?: number[];
+
+    // NEU: Analyse-Version für spätere Updates
+    analysisVersion?: string;
+
     bpmSource?: "auto" | "manual";
     bpmConfidence?: "high" | "medium" | "low";
     bpmConfirmed?: boolean;

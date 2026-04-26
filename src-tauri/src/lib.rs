@@ -71,7 +71,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     let mut energies: Vec<f64> = Vec::new();
 
     loop {
-        if packet_count >= 1200 {
+        if packet_count >= 4000 {
             break;
         }
 
@@ -191,17 +191,30 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         rounded
     };
 
+    let aubio_bpm = aubio_tempo.get_bpm() as f64;
+    let use_aubio = aubio_bpm > 0.0 && aubio_beats.len() >= 4;
+
+    let bpm = if use_aubio {
+        (aubio_bpm * 10.0).round() / 10.0
+    } else {
+        bpm
+    };
+
     let beat_interval_seconds = 60.0 / bpm;
 
-    // Wichtig:
-    // Nicht künstlich auf 0 zurückrechnen.
-    // Grid Start bleibt erst einmal der früheste echte erkannte Peak.
-    // Downbeat-Erkennung bauen wir danach gezielter.
-    let grid_start_seconds = peak_times.first().copied().unwrap_or(0.5);
+    let grid_start_seconds = if use_aubio {
+        aubio_beats.first().copied().unwrap_or(0.5)
+    } else {
+        peak_times.first().copied().unwrap_or(0.5)
+    };
 
-    let beats: Vec<f64> = (0..200)
-        .map(|index| grid_start_seconds + (index as f64 * beat_interval_seconds))
-        .collect();
+    let beats: Vec<f64> = if use_aubio {
+        aubio_beats.iter().take(200).copied().collect()
+    } else {
+        (0..200)
+            .map(|index| grid_start_seconds + (index as f64 * beat_interval_seconds))
+            .collect()
+    };
 
     println!(
         "Rust Analyse: samples={}, peaks={}, bpm={}",
@@ -222,6 +235,50 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         println!("Aubio Beats Preview: {:?}", preview);
     }
 
+    let audio_path = std::path::Path::new(&path);
+    let file_name = audio_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    if let Some(parent_dir) = audio_path.parent() {
+        let analysis_json_path = parent_dir.join("tkdj-analysis.json");
+
+        let mut root: serde_json::Value = if analysis_json_path.exists() {
+            let existing = std::fs::read_to_string(&analysis_json_path)
+                .unwrap_or_else(|_| "{}".to_string());
+
+            serde_json::from_str(&existing).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        if root.get("tracks").is_none() {
+            root["tracks"] = serde_json::json!({});
+        }
+
+        root["tracks"][file_name.clone()] = serde_json::json!({
+            "fileName": file_name,
+            "analysisVersion": "aubio-v1",
+            "analyzedAt": chrono_like_now(),
+            "bpm": bpm,
+            "beatIntervalSeconds": beat_interval_seconds,
+            "gridStartSeconds": grid_start_seconds,
+            "beats": beats.clone(),
+            "fileSizeBytes": std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+            "sampleCount": sample_count
+        });
+
+        let pretty = serde_json::to_string_pretty(&root)
+            .map_err(|err| format!("Analyse JSON konnte nicht erstellt werden: {}", err))?;
+
+        std::fs::write(&analysis_json_path, pretty)
+            .map_err(|err| format!("Analyse JSON konnte nicht gespeichert werden: {}", err))?;
+
+        println!("Analyse JSON gespeichert: {:?}", analysis_json_path);
+    }
+
     Ok(AudioAnalysisBackendResult {
         bpm,
         beat_interval_seconds,
@@ -232,6 +289,18 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             .unwrap_or(0),
         sample_count,
     })
+}
+
+
+fn chrono_like_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    format!("unix-{}", seconds)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
