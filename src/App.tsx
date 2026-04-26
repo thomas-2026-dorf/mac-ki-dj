@@ -82,10 +82,6 @@ function App() {
     );
   }
 
-  function addToQueue(track: Track) {
-    setQueue((prev) => [...prev, track]);
-  }
-
   function clearQueue() {
     setQueue([]);
   }
@@ -132,6 +128,23 @@ function App() {
     }
 
     setQueue(remainingQueue);
+  }
+
+  function smartLoadTrack(track: Track) {
+    // Deck A frei
+    if (!deckATrack) {
+      setDeckATrack(track);
+      return;
+    }
+
+    // Deck B frei
+    if (!deckBTrack) {
+      setDeckBTrack(track);
+      return;
+    }
+
+    // beide belegt → Queue
+    setQueue((prev) => [...prev, track]);
   }
 
   function autoLoadFreeDeck() {
@@ -208,40 +221,36 @@ function App() {
         />
       </div>
 
-      <div className="bottom">
-        <TrackList
-          onLoadA={setDeckATrack}
-          onLoadB={setDeckBTrack}
-          onAddToQueue={addToQueue}
-          onTrackUpdated={handleTrackUpdated}
-        />
+      <TrackList
+        onLoadA={smartLoadTrack}
+        onTrackUpdated={handleTrackUpdated}
+      />
 
-        <div className="right-panel">
-          <div className="queue-actions">
-            <button onClick={loadNextTrack} disabled={queue.length === 0}>
-              Next → Deck {nextDeck}
-            </button>
+      <div className="right-panel">
+        <div className="queue-actions">
+          <button onClick={loadNextTrack} disabled={queue.length === 0}>
+            Next → Deck {nextDeck}
+          </button>
 
-            <button
-              onClick={autoLoadFreeDeck}
-              disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
-            >
-              Auto Load frei
-            </button>
+          <button
+            onClick={autoLoadFreeDeck}
+            disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
+          >
+            Auto Load frei
+          </button>
 
-            <button onClick={clearQueue} disabled={queue.length === 0}>
-              Queue leeren
-            </button>
-          </div>
-
-          <QueuePanel
-            queue={queue}
-            onRemove={removeFromQueue}
-            onMoveUp={moveUp}
-            onMoveDown={moveDown}
-          />
-          <AiPanel />
+          <button onClick={clearQueue} disabled={queue.length === 0}>
+            Queue leeren
+          </button>
         </div>
+
+        <QueuePanel
+          queue={queue}
+          onRemove={removeFromQueue}
+          onMoveUp={moveUp}
+          onMoveDown={moveDown}
+        />
+        <AiPanel />
       </div>
     </div>
   );

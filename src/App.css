@@ -84,22 +84,22 @@ body {
 
 
 .deck-waveform-bar {
-    flex: 1;
-    min-width: 1px;
-    max-width: 3px;
-    border-radius: 2px;
-    opacity: 0.9;
+  flex: 1;
+  min-width: 1px;
+  max-width: 3px;
+  border-radius: 2px;
+  opacity: 0.9;
 }
 
 .deck-waveform-playhead {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: #ffffff;
-    transform: translateX(-50%);
-    z-index: 20;
-    box-shadow: 0 0 12px rgba(255,255,255,0.8);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #ffffff;
+  transform: translateX(-50%);
+  z-index: 20;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
 }
 
 .deck-waveform-empty {
@@ -109,30 +109,30 @@ body {
 }
 
 .deck-time {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-top: 8px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
 }
 
 .deck-info {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-top: 18px;
-    margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  margin-bottom: 14px;
 }
 
 .deck-controls {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-top: 24px;
-    margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 24px;
+  margin-bottom: 8px;
 }
 
 .deck-controls button {
@@ -328,6 +328,7 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
 /* Layout Fix nach Waveform */
 .app {
   overflow: hidden;
@@ -420,141 +421,281 @@ body {
 
 
 .deck-cue-marker {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    transform: translateX(-50%);
-    z-index: 12;
-    border-radius: 999px;
-    box-shadow: 0 0 10px rgba(34,197,94,0.8);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  transform: translateX(-50%);
+  z-index: 12;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
 }
 
 .deck-cue-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-    margin-bottom: 12px;
-    font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  font-size: 11px;
 }
 
 .deck-cue-label {
-    padding: 3px 7px;
-    border-radius: 999px;
-    color: #111;
-    font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #111;
+  font-weight: 700;
 }
 
 .deck-cue-drum {
-    background: #22c55e;
+  background: #22c55e;
 }
 
 .deck-cue-vocal {
-    background: #ef4444;
+  background: #ef4444;
 }
 
 .deck-cue-drop {
-    background: #a855f7;
+  background: #a855f7;
 }
 
 .deck-cue-break {
-    background: #f97316;
+  background: #f97316;
 }
 
 .deck-cue-outro {
-    background: #38bdf8;
+  background: #38bdf8;
 }
 
 .deck-cue-loop,
 .deck-cue-transition {
-    background: #eab308;
+  background: #eab308;
 }
 
 .deck-cue-start,
 .deck-cue-intro {
-    background: #ffffff;
+  background: #ffffff;
 }
 
 
 .deck-waveform-container {
-    position: relative;
+  position: relative;
 }
 
 .deck-beat-grid {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 110px;
-    pointer-events: none;
-    z-index: 5;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 110px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .deck-beat-marker {
-    position: absolute;
-    top: 8px;
-    height: 92px;
-    border-left: 1px solid rgba(255, 255, 255, 0.16);
-    transform: translateX(-50%);
-    z-index: 6;
-    color: rgba(255,255,255,0.65);
-    font-size: 12px;
-    font-weight: 800;
-    padding-left: 3px;
+  position: absolute;
+  top: 8px;
+  height: 92px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  transform: translateX(-50%);
+  z-index: 6;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  font-weight: 800;
+  padding-left: 3px;
 }
 
 .deck-beat-marker.beat-1 {
-    border-left: 3px solid rgba(255, 255, 255, 0.9);
-    color: #ffffff;
+  border-left: 3px solid rgba(255, 255, 255, 0.9);
+  color: #ffffff;
 }
 
 .deck-beat-marker.beat-2,
 .deck-beat-marker.beat-3,
 .deck-beat-marker.beat-4 {
-    color: #888;
+  color: #888;
 }
 
 
 .deck-waveform-bar.wave-low {
-    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
 }
 
 .deck-waveform-bar.wave-mid {
-    background: linear-gradient(180deg, #22d3ee 0%, #06b6d4 45%, #2563eb 100%);
+  background: linear-gradient(180deg, #22d3ee 0%, #06b6d4 45%, #2563eb 100%);
 }
 
 .deck-waveform-bar.wave-hot {
-    background: linear-gradient(180deg, #fb7185 0%, #ec4899 45%, #7c3aed 100%);
+  background: linear-gradient(180deg, #fb7185 0%, #ec4899 45%, #7c3aed 100%);
 }
 
 
 .deck-beatgrid-stage {
-    position: relative;
-    cursor: pointer;
-    height: 118px;
-    padding: 18px 8px 10px;
-    border: 1px solid #334155;
-    border-radius: 14px;
-    overflow: hidden;
-    background: #020617;
+  position: relative;
+  cursor: pointer;
+  height: 118px;
+  padding: 18px 8px 10px;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #020617;
 }
 
 .deck-mini-waveform {
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 12px;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    opacity: 0.45;
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 12px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0.45;
 }
 
 .deck-mini-waveform .deck-waveform-bar {
-    flex: 1;
-    min-width: 1px;
-    max-width: 3px;
-    border-radius: 2px;
+  flex: 1;
+  min-width: 1px;
+  max-width: 3px;
+  border-radius: 2px;
+}
+
+/* TK-DJ Library Layout – Bearbeitungsleiste + DJ-Tabelle */
+
+.bottom {
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+  align-items: stretch;
+}
+
+.track-list {
+  max-height: none;
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+}
+
+.track-edit-panel {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+  margin: 10px 0 12px;
+  border: 1px solid #38bdf8;
+  border-radius: 12px;
+  background: #0b1220;
+}
+
+.track-edit-panel>strong {
+  grid-column: 1 / -1;
+  font-size: 14px;
+  color: #f8fafc;
+}
+
+.track-edit-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.track-edit-panel input,
+.track-edit-panel select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #111827;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 7px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+.track-edit-panel input[type="checkbox"] {
+  width: auto;
+}
+
+.track-edit-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.track-edit-actions button {
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 7px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.track-edit-actions button:first-child {
+  background: #0369a1;
+  border-color: #0ea5e9;
+}
+
+.track-list-header,
+.track-row {
+  grid-template-columns: minmax(260px, 2.2fr) 70px 70px 80px 90px 150px 80px minmax(260px, 1fr);
+}
+
+.track-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #0f172a;
+  padding: 10px 0;
+}
+
+.track-row {
+  min-height: 44px;
+}
+
+.track-row:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.load-buttons {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* TK-DJ Layout Stabilisierung */
+
+.app {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.top {
+  flex: 0 0 36vh;
+  min-height: 300px;
+  max-height: 380px;
+}
+
+.bottom {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.track-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.right-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.queue-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.queue-actions button {
+  font-size: 11px;
+  padding: 6px 8px;
 }
