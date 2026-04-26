@@ -45,6 +45,8 @@ export default function TrackList({
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
     const [searchText, setSearchText] = useState("");
+    const [editingBpmTrackId, setEditingBpmTrackId] = useState<string | null>(null);
+    const [editingBpmValue, setEditingBpmValue] = useState("");
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -159,6 +161,7 @@ export default function TrackList({
                     ...t,
                     duration: formatDuration(info.durationSeconds),
                     bpm: info.bpm ?? t.bpm,
+                    energy: info.energyLevel,
 
                     analysis: {
                         ...(t.analysis || {
@@ -245,6 +248,125 @@ export default function TrackList({
                 ? []
                 : demoTracks;
 
+    function startEditBpm(track: Track) {
+        setEditingBpmTrackId(track.id);
+        setEditingBpmValue(String(track.bpm || ""));
+    }
+
+    function cancelEditBpm() {
+        setEditingBpmTrackId(null);
+        setEditingBpmValue("");
+    }
+
+    
+
+function applyManualBpm(track: Track, bpm: number) {
+    const roundedBpm = Math.round(bpm);
+
+    const updatedTracks = tracks.map((t) => {
+        if (t.id !== track.id) return t;
+
+        return {
+            ...t,
+            bpm: roundedBpm,
+            analysis: {
+                ...(t.analysis || {
+                    status: "done" as const,
+                    cuePoints: [],
+                    loops: [],
+                }),
+                detectedBpm: roundedBpm,
+                manualBpm: roundedBpm,
+                bpmSource: "manual" as const,
+                bpmConfidence: "high" as const,
+                bpmConfirmed: true,
+                cuePoints: t.analysis?.cuePoints || [],
+                loops: t.analysis?.loops || [],
+            },
+        };
+    });
+
+    setTracks(updatedTracks);
+    saveLibrary(updatedTracks, musicFolder);
+}
+
+function openOnlineSongCheck(track: Track) {
+    const query = [
+        track.artist,
+        track.title,
+        "BPM key energy song"
+    ]
+        .filter(Boolean)
+        .join(" ");
+
+    const url = "https://www.google.com/search?q=" + encodeURIComponent(query);
+    window.open(url, "_blank");
+}
+
+function getRecommendedBpm(track: Track): number | null {
+    const candidates = track.analysis?.debug?.bpmCandidates || [];
+    const tempogram = track.analysis?.debug?.tempogramCandidates || [];
+
+    if (candidates.length === 0) return null;
+
+    const match = candidates.find((bpm) =>
+        tempogram.some((t) => Math.abs(t - bpm) <= 2)
+    );
+
+    let bpm = match ?? tempogram[0] ?? candidates[0];
+
+    if (!bpm) return null;
+
+    while (bpm < 80) bpm *= 2;
+    while (bpm > 160) bpm /= 2;
+
+    return Math.round(bpm);
+}
+
+function saveEditedBpm(track: Track) {
+        const parsedBpm = Number(editingBpmValue.replace(",", "."));
+
+        if (!Number.isFinite(parsedBpm) || parsedBpm <= 0) {
+            alert("Bitte eine gültige BPM-Zahl eingeben.");
+            return;
+        }
+
+        const roundedBpm = Math.round(parsedBpm);
+
+        const updatedTracks = tracks.map((currentTrack) => {
+            if (currentTrack.id !== track.id) return currentTrack;
+
+            return {
+                ...currentTrack,
+                bpm: roundedBpm,
+                analysis: {
+                    ...(currentTrack.analysis || {
+                        status: "done" as const,
+                        cuePoints: [],
+                        loops: [],
+                    }),
+                    detectedBpm: roundedBpm,
+                    manualBpm: roundedBpm,
+                    bpmSource: "manual" as const,
+                    bpmConfidence: "high" as const,
+                    bpmConfirmed: true,
+                    cuePoints: currentTrack.analysis?.cuePoints || [],
+                    loops: currentTrack.analysis?.loops || [],
+                },
+            };
+        });
+
+        setTracks(updatedTracks);
+        saveLibrary(updatedTracks, musicFolder);
+
+        const updatedTrack = updatedTracks.find((currentTrack) => currentTrack.id === track.id);
+        if (updatedTrack) {
+            onTrackUpdated?.(updatedTrack);
+        }
+
+        cancelEditBpm();
+    }
+
     const filteredTracks = list.filter((track) => {
         const query = searchText.trim().toLowerCase();
         if (!query) return true;
@@ -323,7 +445,36 @@ export default function TrackList({
                         </div>
                     </div>
 
-                    <span>{track.bpm}</span>
+                    <span>
+                        {editingBpmTrackId === track.id ? (
+                            <span className="bpm-edit">
+                                <input
+                                    value={editingBpmValue}
+                                    onChange={(event) => setEditingBpmValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") saveEditedBpm(track);
+                                        if (event.key === "Escape") cancelEditBpm();
+                                    }}
+                                    autoFocus
+                                />
+                                <button type="button" onClick={() => saveEditedBpm(track)}>
+                                    OK
+                                </button>
+                                <button type="button" onClick={cancelEditBpm}>
+                                    ×
+                                </button>
+                            </span>
+                        ) : (
+                            <button
+                                type="button"
+                                className="bpm-edit-button"
+                                onClick={() => startEditBpm(track)}
+                                title="BPM bearbeiten"
+                            >
+                                {track.bpm}
+                            </button>
+                        )}
+                    </span>
                     <span>{track.key}</span>
                     <span>{track.energy}</span>
                     <span>{track.duration}</span>
@@ -332,6 +483,29 @@ export default function TrackList({
                         <button type="button" onClick={() => onLoadA(track)}>A</button>
                         <button type="button" onClick={() => onLoadB(track)}>B</button>
                         <button type="button" onClick={() => onAddToQueue(track)}>+</button>
+
+<button type="button" onClick={() => openOnlineSongCheck(track)}>
+    Online prüfen
+</button>
+
+<button
+    type="button"
+    onClick={() => {
+        const recommended = getRecommendedBpm(track);
+        if (!recommended) {
+            alert("Kein Vorschlag verfügbar");
+            return;
+        }
+
+        
+applyManualBpm(track, recommended);
+alert("BPM gesetzt auf " + recommended);
+
+        cancelEditBpm();
+    }}
+>
+    Empfohlen
+</button>
 
                         {track.analysis?.status !== "done" && (
                             <button type="button" onClick={() => markForAnalysis(track.id)}>
@@ -343,11 +517,6 @@ export default function TrackList({
                             Audio testen
                         </button>
 
-                        {track.analysis?.status === "done" && (
-                            <button type="button" disabled>
-                                Analysiert
-                            </button>
-                        )}
                     </div>
                 </div>
             ))}

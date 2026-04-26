@@ -1,5 +1,5 @@
 import { calculateBpmCandidates, selectBestBpm } from "./bpm";
-import { calculateEnergyFrames } from "./energy";
+import { calculateEnergyFrames, calculateEnergyLevel } from "./energy";
 import { detectOnsets } from "./onsets";
 import { prepareSignal } from "./signal";
 import { generateWaveform } from "./waveform";
@@ -28,6 +28,7 @@ export async function analyzeAudioBuffer(
         const signal = prepareSignal(audioBuffer);
         const energyFrames = calculateEnergyFrames(signal);
         const onsets = detectOnsets(energyFrames);
+        const energyLevel = calculateEnergyLevel(energyFrames, onsets.length);
 
         const bpmCandidates = calculateBpmCandidates(onsets);
         const tempogramCandidates = calculateTempogramBpmCandidates(onsets);
@@ -45,6 +46,8 @@ export async function analyzeAudioBuffer(
             durationSeconds: audioBuffer.duration,
             sampleRate: audioBuffer.sampleRate,
             numberOfChannels: audioBuffer.numberOfChannels,
+
+            energyLevel,
 
             bpm,
             bpmConfidence,

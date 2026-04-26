@@ -381,3 +381,43 @@ body {
   z-index: 20;
   margin: 8px 0 10px;
 }
+
+.bpm-edit-button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.bpm-edit-button:hover {
+  border-color: #38bdf8;
+  background: #0f172a;
+}
+
+.bpm-edit {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bpm-edit input {
+  width: 58px;
+  background: #020617;
+  color: #f8fafc;
+  border: 1px solid #38bdf8;
+  border-radius: 6px;
+  padding: 5px;
+}
+
+.bpm-edit button {
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
