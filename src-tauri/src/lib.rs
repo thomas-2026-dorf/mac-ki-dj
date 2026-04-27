@@ -25,6 +25,7 @@ struct Mp3TagInfo {
     genre: Option<String>,
     year: Option<u32>,
     comment: Option<String>,
+    duration_seconds: Option<u64>,
 }
 
 #[tauri::command]
@@ -333,6 +334,42 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         grid_start_seconds,
         file_size_bytes: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
         sample_count,
+    })
+}
+
+#[tauri::command]
+fn read_mp3_tags(path: String) -> Result<Mp3TagInfo, String> {
+    use lofty::file::{AudioFile, TaggedFileExt};
+    use lofty::probe::Probe;
+    use lofty::tag::{Accessor, ItemKey};
+
+    let tagged_file = Probe::open(&path)
+        .map_err(|err| format!("MP3 Tag Datei konnte nicht geöffnet werden: {}", err))?
+        .read()
+        .map_err(|err| format!("MP3 Tags konnten nicht gelesen werden: {}", err))?;
+
+    let tag = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+        .ok_or("Keine MP3 Tags gefunden")?;
+
+    let comment = tag
+        .get_string(&ItemKey::Comment)
+        .map(|value| value.to_string());
+
+    let artist = tag
+        .get_string(&ItemKey::TrackArtist)
+        .map(|value| value.to_string())
+        .or_else(|| tag.artist().map(|value| value.to_string()));
+
+    Ok(Mp3TagInfo {
+        title: tag.title().map(|value| value.to_string()),
+        artist,
+        album: tag.album().map(|value| value.to_string()),
+        genre: tag.genre().map(|value| value.to_string()),
+        year: tag.year(),
+        comment,
+        duration_seconds: Some(tagged_file.properties().duration().as_secs()),
     })
 }
 

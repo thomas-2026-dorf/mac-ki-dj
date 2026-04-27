@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readDir, readFile } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 
 import { demoTracks } from "../data/demoTracks";
 import type { Track } from "../types/track";
@@ -22,6 +23,30 @@ type EditFields = {
     key: string;
     energy: string;
 };
+
+type Mp3TagInfo = {
+    title?: string;
+    artist?: string;
+    album?: string;
+    genre?: string;
+    year?: number;
+    comment?: string;
+    duration_seconds?: number;
+};
+
+function parseMixedInKeyComment(comment?: string): Partial<Pick<Track, "bpm" | "key" | "energy">> {
+    if (!comment) return {};
+
+    const match = comment.match(/\b(([1-9]|1[0-2])[AB])\b\s*[-|/]\s*(\d{2,3}(?:[.,]\d+)?)\s*[-|/]\s*(10|[1-9])\b/i);
+
+    if (!match) return {};
+
+    return {
+        key: match[1].toUpperCase(),
+        bpm: Math.round(Number(match[3].replace(",", "."))),
+        energy: Number(match[4]),
+    };
+}
 
 function formatDurationFromSeconds(seconds?: number): string {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";
@@ -112,34 +137,43 @@ export default function TrackList({
             console.log("Keine externen Songdaten gefunden");
         }
 
-        const mp3Files: Track[] = entries
-            .filter((entry) => {
-                const name = entry.name || "";
-                return name.toLowerCase().endsWith(".mp3");
-            })
-            .map((entry, index) => {
-                const name = entry.name || "Unbekannt.mp3";
-                const externalData = externalDataMap[name];
+        const mp3Entries = entries.filter((entry) => {
+            const name = entry.name || "";
+            return name.toLowerCase().endsWith(".mp3");
+        });
 
-                return {
-                    id: `${folder}-${index}`,
-                    title: externalData?.title || cleanAmazonTitle(name),
-                    artist: externalData?.artist || "-",
-                    bpm: externalData?.bpm || 0,
-                    key: externalData?.key || "-",
-                    energy: externalData?.energy || 0,
-                    duration:
-                        externalData?.duration ||
-                        formatDurationFromSeconds(
-                            typeof externalData?.duration === "number"
-                                ? externalData.duration
-                                : undefined,
-                        ),
-                    genre: externalData?.genre || "-",
-                    url: `${folder}/${name}`,
-                    year: externalData?.year,
-                };
+        const mp3Files: Track[] = [];
+
+        for (const [index, entry] of mp3Entries.entries()) {
+            const name = entry.name || "Unbekannt.mp3";
+            const externalData = externalDataMap[name];
+            const url = `${folder}/${name}`;
+
+            let tagData: Mp3TagInfo = {};
+
+            try {
+                tagData = await invoke<Mp3TagInfo>("read_mp3_tags", { path: url });
+            } catch (error) {
+                console.warn("MP3 Tags konnten nicht gelesen werden:", name, error);
+            }
+
+            const mixedInKeyData = parseMixedInKeyComment(tagData.comment);
+
+            mp3Files.push({
+                id: `${folder}-${index}`,
+                title: externalData?.title || tagData.title || cleanAmazonTitle(name),
+                artist: externalData?.artist || tagData.artist || "-",
+                bpm: externalData?.bpm || mixedInKeyData.bpm || 0,
+                key: externalData?.key || mixedInKeyData.key || "-",
+                energy: externalData?.energy || mixedInKeyData.energy || 0,
+                duration:
+                    externalData?.duration ||
+                    formatDurationFromSeconds(tagData.duration_seconds),
+                genre: externalData?.genre || tagData.genre || "-",
+                url,
+                year: externalData?.year || tagData.year,
             });
+        }
 
         setTracks(mp3Files);
         setMusicFolder(folder);

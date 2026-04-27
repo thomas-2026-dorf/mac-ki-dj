@@ -221,10 +221,11 @@ function App() {
         />
       </div>
 
-      <TrackList
-        onLoadA={smartLoadTrack}
-        onTrackUpdated={handleTrackUpdated}
-      />
+      <div className="main-bottom">
+        <TrackList
+          onLoadA={smartLoadTrack}
+          onTrackUpdated={handleTrackUpdated}
+        />
 
       <div className="right-panel">
         <div className="queue-actions">
@@ -251,6 +252,7 @@ function App() {
           onMoveDown={moveDown}
         />
         <AiPanel />
+      </div>
       </div>
     </div>
   );

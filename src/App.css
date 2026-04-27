@@ -721,3 +721,107 @@ body {
 .track-list-header {
   font-size: 11px;
 }
+/* TK-DJ Layout: Songliste links, Queue rechts */
+.track-list {
+  width: 72%;
+  display: inline-block;
+  vertical-align: top;
+}
+
+.right-panel {
+  width: 27%;
+  display: inline-block;
+  vertical-align: top;
+  margin-left: 1%;
+}
+
+.right-panel .queue-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+
+.main-bottom {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.main-bottom .track-list {
+  width: 72%;
+}
+
+.main-bottom .right-panel {
+  width: 28%;
+}
+
+/* TK-DJ: Bearbeiten-Panel vorerst ausblenden, spätere Bearbeitung direkt in Trackliste */
+.track-edit-panel {
+  display: none;
+}
+
+/* TK-DJ: Deckbereich kompakter */
+.top {
+  height: 230px;
+  max-height: 230px;
+  overflow: hidden;
+}
+
+.deck {
+  min-height: 190px;
+  height: 190px;
+}
+
+.crossfader {
+  min-height: 190px;
+  height: 190px;
+}
+
+/* sauberer Abstand zwischen Decks und Inhalt */
+.main-bottom {
+  margin-top: 12px;
+}
+
+/* Songliste bekommt klaren Rand */
+.track-list {
+  background: #0b0b0b;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+/* Global Dark DJ Look */
+body {
+  background: #000 !important;
+}
+
+/* Panels dunkler */
+.track-list,
+.right-panel,
+.deck,
+.crossfader {
+  background: #0b0b0b !important;
+}
+
+/* Linien dezenter */
+.track-list-header,
+.track-row {
+  border-color: rgba(255,255,255,0.06);
+}
+
+/* TK-DJ: aktive Deck-Umrandung entfernen */
+.deck.active,
+.deck.is-active,
+.deck[data-active="true"] {
+  border-color: rgba(255,255,255,0.14) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* TK-DJ: blaue Umrandung vom aktiven Deck komplett entfernen */
+.active-deck {
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
