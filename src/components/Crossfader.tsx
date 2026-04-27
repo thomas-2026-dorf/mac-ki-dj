@@ -12,16 +12,10 @@ export default function Crossfader({ onActiveDeckChange, onChange, bpmA, bpmB }:
 
     function handleChange(nextValue: number) {
         setValue(nextValue);
-
         onChange(nextValue / 100);
 
-        if (nextValue < 50) {
-            onActiveDeckChange("A");
-        }
-
-        if (nextValue > 50) {
-            onActiveDeckChange("B");
-        }
+        if (nextValue < 50) onActiveDeckChange("A");
+        if (nextValue > 50) onActiveDeckChange("B");
     }
 
     const masterDeck = value <= 50 ? "A" : "B";
@@ -35,6 +29,16 @@ export default function Crossfader({ onActiveDeckChange, onChange, bpmA, bpmB }:
 
     return (
         <div className="crossfader">
+            <div className="sync-info">
+                <strong>SYNC</strong>
+                <span>Master: {masterDeck}</span>
+                <span>
+                    {masterBpm && targetBpm
+                        ? `${targetBpm} → ${masterBpm} BPM (${pitchPercent}%)`
+                        : "BPM fehlt"}
+                </span>
+            </div>
+
             <div className="labels">
                 <span>A</span>
                 <span>B</span>
@@ -53,14 +57,22 @@ export default function Crossfader({ onActiveDeckChange, onChange, bpmA, bpmB }:
                 A: {100 - value} | B: {value}
             </div>
 
-            <div className="sync-info">
-                <strong>SYNC</strong>
-                <span>Master: {masterDeck}</span>
-                <span>
-                    {masterBpm && targetBpm
-                        ? `${targetBpm} → ${masterBpm} BPM (${pitchPercent}%)`
-                        : "BPM fehlt"}
-                </span>
+            <div className="mixer-controls">
+                <div className="deck-mixer-controls">
+                    <strong>Deck A</strong>
+                    <label>Vol <input type="range" min="0" max="100" defaultValue="100" /></label>
+                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Höhen <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Pitch <input type="range" min="-8" max="8" defaultValue="0" /></label>
+                </div>
+
+                <div className="deck-mixer-controls">
+                    <strong>Deck B</strong>
+                    <label>Vol <input type="range" min="0" max="100" defaultValue="100" /></label>
+                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Höhen <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Pitch <input type="range" min="-8" max="8" defaultValue="0" /></label>
+                </div>
             </div>
         </div>
     );
