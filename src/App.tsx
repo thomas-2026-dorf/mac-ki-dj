@@ -7,6 +7,7 @@ import Crossfader from "./components/Crossfader";
 import TrackList from "./components/TrackList";
 import AiPanel from "./components/AiPanel";
 import QueuePanel from "./components/QueuePanel";
+import { calculateTransitionScore } from "./modules/transition/transitionScore";
 
 import type { Track } from "./types/track";
 
@@ -33,6 +34,11 @@ function App() {
   const [crossfader, setCrossfader] = useState(0.5);
   const volumeA = 1 - crossfader;
   const volumeB = crossfader;
+
+  const transitionScore =
+    deckATrack && deckBTrack
+      ? calculateTransitionScore(deckATrack, deckBTrack)
+      : null;
 
   useEffect(() => {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
@@ -204,6 +210,23 @@ function App() {
         />
 
         <div className="right-panel">
+          <div className="transition-score-box">
+            <strong>Übergang A → B</strong>
+            {transitionScore ? (
+              <>
+                <span>
+                  {transitionScore.label} ({transitionScore.score})
+                </span>
+                <small>{transitionScore.reasons[0]}</small>
+              </>
+            ) : (
+              <>
+                <span>2 Songs laden</span>
+                <small>Dann berechnet TK-DJ den ersten Mix-Score.</small>
+              </>
+            )}
+          </div>
+
           <div className="queue-actions">
             <button
               className="automix-button"
