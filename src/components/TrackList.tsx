@@ -21,13 +21,6 @@ type EditFields = {
     bpm: string;
     key: string;
     energy: string;
-    mood: "" | "warmup" | "dance" | "peak" | "cooldown";
-    favorite: boolean;
-    rating: string;
-    mixInSeconds: string;
-    mixOutSeconds: string;
-    introEndSeconds: string;
-    outroStartSeconds: string;
 };
 
 function formatDurationFromSeconds(seconds?: number): string {
@@ -46,13 +39,6 @@ function toEditFields(track: Track): EditFields {
         bpm: track.bpm ? String(track.bpm) : "",
         key: track.key || "",
         energy: track.energy ? String(track.energy) : "",
-        mood: track.mood || "",
-        favorite: !!track.favorite,
-        rating: track.rating ? String(track.rating) : "",
-        mixInSeconds: track.mixInSeconds ? String(track.mixInSeconds) : "",
-        mixOutSeconds: track.mixOutSeconds ? String(track.mixOutSeconds) : "",
-        introEndSeconds: track.introEndSeconds ? String(track.introEndSeconds) : "",
-        outroStartSeconds: track.outroStartSeconds ? String(track.outroStartSeconds) : "",
     };
 }
 
@@ -66,26 +52,17 @@ function parseOptionalNumber(value: string): number | undefined {
 
 function cleanAmazonTitle(title: string): string {
     return title
-        // .mp3 entfernen
         .replace(/\.mp3$/i, "")
-
-        // führende Nummern entfernen (08 - / 01_ / 12.)
         .replace(/^\d+\s*[-_.]\s*/, "")
-
-        // alles ab _UUID oder -UUID entfernen
         .replace(/[_-][a-f0-9]{8,}.*$/i, "")
-
-        // doppelte Leerzeichen
         .replace(/\s+/g, " ")
-
-        // trim
         .trim();
 }
+
 export default function TrackList({
     onLoadA,
     onTrackUpdated,
 }: Props) {
-
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
     const [searchText, setSearchText] = useState("");
@@ -131,7 +108,6 @@ export default function TrackList({
             const parsed = JSON.parse(jsonText);
 
             externalDataMap = parsed.tracks || {};
-            console.log("Externe Songdaten geladen:", externalDataMap);
         } catch {
             console.log("Keine externen Songdaten gefunden");
         }
@@ -148,7 +124,7 @@ export default function TrackList({
                 return {
                     id: `${folder}-${index}`,
                     title: externalData?.title || cleanAmazonTitle(name),
-                    artist: externalData?.artist || "Local",
+                    artist: externalData?.artist || "-",
                     bpm: externalData?.bpm || 0,
                     key: externalData?.key || "-",
                     energy: externalData?.energy || 0,
@@ -159,18 +135,9 @@ export default function TrackList({
                                 ? externalData.duration
                                 : undefined,
                         ),
-                    genre: externalData?.genre || "Local",
+                    genre: externalData?.genre || "-",
                     url: `${folder}/${name}`,
                     year: externalData?.year,
-                    mood: externalData?.mood,
-                    favorite: externalData?.favorite,
-                    rating: externalData?.rating,
-                    mixInSeconds: externalData?.mixInSeconds,
-                    mixOutSeconds: externalData?.mixOutSeconds,
-                    introEndSeconds: externalData?.introEndSeconds,
-                    outroStartSeconds: externalData?.outroStartSeconds,
-                    cuePoints: externalData?.cuePoints || [],
-                    loops: externalData?.loops || [],
                 };
             });
 
@@ -225,19 +192,12 @@ export default function TrackList({
         const updatedTrack: Track = {
             ...selectedTrack,
             title: editFields.title.trim() || selectedTrack.title,
-            artist: editFields.artist.trim() || "Local",
-            genre: editFields.genre.trim() || "Local",
+            artist: editFields.artist.trim() || "-",
+            genre: editFields.genre.trim() || "-",
             year: parseOptionalNumber(editFields.year),
             bpm: Math.round(parseOptionalNumber(editFields.bpm) || 0),
             key: editFields.key.trim() || "-",
             energy: Math.round(parseOptionalNumber(editFields.energy) || 0),
-            mood: editFields.mood || undefined,
-            favorite: editFields.favorite,
-            rating: parseOptionalNumber(editFields.rating),
-            mixInSeconds: parseOptionalNumber(editFields.mixInSeconds),
-            mixOutSeconds: parseOptionalNumber(editFields.mixOutSeconds),
-            introEndSeconds: parseOptionalNumber(editFields.introEndSeconds),
-            outroStartSeconds: parseOptionalNumber(editFields.outroStartSeconds),
         };
 
         const updatedTracks = tracks.map((track) =>
@@ -267,8 +227,6 @@ export default function TrackList({
             track.key,
             String(track.energy || ""),
             String(track.year || ""),
-            track.mood || "",
-            String(track.rating || ""),
         ]
             .join(" ")
             .toLowerCase()
@@ -323,7 +281,7 @@ export default function TrackList({
                         </label>
 
                         <label>
-                            Interpret
+                            Artist
                             <input
                                 value={editFields.artist}
                                 onChange={(event) => updateEditField("artist", event.target.value)}
@@ -370,81 +328,6 @@ export default function TrackList({
                             />
                         </label>
 
-                        <label>
-                            Phase
-                            <select
-                                value={editFields.mood}
-                                onChange={(event) =>
-                                    updateEditField("mood", event.target.value as EditFields["mood"])
-                                }
-                            >
-                                <option value="">Keine</option>
-                                <option value="warmup">Warmup</option>
-                                <option value="dance">Dance</option>
-                                <option value="peak">Peak</option>
-                                <option value="cooldown">Cooldown</option>
-                            </select>
-                        </label>
-
-                        <label>
-                            Rating
-                            <input
-                                value={editFields.rating}
-                                onChange={(event) => updateEditField("rating", event.target.value)}
-                            />
-                        </label>
-
-                        <label>
-                            Mix-In
-                            <input
-                                value={editFields.mixInSeconds}
-                                onChange={(event) =>
-                                    updateEditField("mixInSeconds", event.target.value)
-                                }
-                            />
-                        </label>
-
-                        <label>
-                            Mix-Out
-                            <input
-                                value={editFields.mixOutSeconds}
-                                onChange={(event) =>
-                                    updateEditField("mixOutSeconds", event.target.value)
-                                }
-                            />
-                        </label>
-
-                        <label>
-                            Intro Ende
-                            <input
-                                value={editFields.introEndSeconds}
-                                onChange={(event) =>
-                                    updateEditField("introEndSeconds", event.target.value)
-                                }
-                            />
-                        </label>
-
-                        <label>
-                            Outro Start
-                            <input
-                                value={editFields.outroStartSeconds}
-                                onChange={(event) =>
-                                    updateEditField("outroStartSeconds", event.target.value)
-                                }
-                            />
-                        </label>
-
-                        <label>
-                            <input
-                                type="checkbox"
-                                checked={editFields.favorite}
-                                onChange={(event) =>
-                                    updateEditField("favorite", event.target.checked)
-                                }
-                            />
-                            Favorit
-                        </label>
-
                         <div className="track-edit-actions">
                             <button type="button" onClick={saveSelectedTrack}>
                                 Speichern
@@ -461,18 +344,18 @@ export default function TrackList({
                 className="track-search"
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Song, Interpret, Genre, BPM, Key suchen..."
+                placeholder="Song, Artist, Genre, BPM, Key suchen..."
             />
 
             <div className="track-list-header">
                 <span>Titel</span>
+                <span>Artist</span>
                 <span>BPM</span>
                 <span>Key</span>
                 <span>Energy</span>
-                <span>Phase</span>
-                <span>Mix</span>
+                <span>Genre</span>
+                <span>Jahr</span>
                 <span>Länge</span>
-                <span>Laden</span>
             </div>
 
             {filteredTracks.map((track) => (
@@ -481,7 +364,7 @@ export default function TrackList({
                     key={track.id}
                     onClick={() => selectTrack(track)}
                     onDoubleClick={() => onLoadA(track)}
-                    title="Doppelklick lädt in Deck A"
+                    title="Doppelklick lädt den Song"
                     style={{
                         outline:
                             selectedTrackId === track.id
@@ -491,29 +374,16 @@ export default function TrackList({
                     }}
                 >
                     <div>
-                        <strong>
-                            {track.favorite ? "★ " : ""}
-                            {track.title}
-                        </strong>
-                        <small>
-                            {track.artist} · {track.genre}
-                            {track.year ? ` · ${track.year}` : ""}
-                            {track.rating ? ` · Rating ${track.rating}` : ""}
-                        </small>
+                        <strong>{track.title}</strong>
                     </div>
 
+                    <span>{track.artist}</span>
                     <span>{track.bpm || "-"}</span>
                     <span>{track.key}</span>
                     <span>{track.energy || "-"}</span>
-                    <span>{track.mood || "-"}</span>
-                    <span>
-                        IN {track.mixInSeconds ?? "-"} / OUT {track.mixOutSeconds ?? "-"}
-                    </span>
+                    <span>{track.genre}</span>
+                    <span>{track.year || "-"}</span>
                     <span>{track.duration}</span>
-
-                    <span style={{ color: "#64748b", fontSize: "11px" }}>
-                        Doppelklick → Deck A
-                    </span>
                 </div>
             ))}
         </div>

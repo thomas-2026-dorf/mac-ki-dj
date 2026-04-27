@@ -17,6 +17,16 @@ struct AudioAnalysisBackendResult {
     sample_count: u64,
 }
 
+#[derive(Serialize)]
+struct Mp3TagInfo {
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    genre: Option<String>,
+    year: Option<u32>,
+    comment: Option<String>,
+}
+
 #[tauri::command]
 fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String> {
     println!("Analyze audio file requested: {}", path);
@@ -236,7 +246,13 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             );
 
             let beat_preview: Vec<f32> = result.beat_grid.beats.iter().take(10).copied().collect();
-            let downbeat_preview: Vec<f32> = result.beat_grid.downbeats.iter().take(10).copied().collect();
+            let downbeat_preview: Vec<f32> = result
+                .beat_grid
+                .downbeats
+                .iter()
+                .take(10)
+                .copied()
+                .collect();
 
             println!("Stratum Beats Preview: {:?}", beat_preview);
             println!("Stratum Downbeats Preview: {:?}", downbeat_preview);
@@ -337,7 +353,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init()) // 🔥 MUSS DRIN SEIN
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![greet, analyze_audio_file])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            analyze_audio_file,
+            read_mp3_tags
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
