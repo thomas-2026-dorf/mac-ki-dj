@@ -736,3 +736,18 @@
 .sync-wave-position {
   bottom: 6px !important;
 }
+
+/* ===== TK-DJ: Sync Offset Anzeige ===== */
+.sync-offset-label {
+  position: absolute !important;
+  right: 10px !important;
+  top: 8px !important;
+  z-index: 20 !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  border-radius: 999px !important;
+  padding: 4px 10px !important;
+  color: #f8fafc !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}

@@ -3,6 +3,7 @@ import "./App.css";
 import "./layout.css";
 
 import Deck from "./components/Deck";
+import SyncWaveCompare from "./components/SyncWaveCompare";
 import SyncWavePanel from "./components/SyncWavePanel";
 import Crossfader from "./components/Crossfader";
 import TrackList from "./components/TrackList";
@@ -160,6 +161,15 @@ function App() {
         <SyncWavePanel deck="A" track={deckATrack} time={deckATime.time} duration={deckATime.duration} onSeek={setDeckASeekTo} />
         <SyncWavePanel deck="B" track={deckBTrack} time={deckBTime.time} duration={deckBTime.duration} onSeek={setDeckBSeekTo} />
       </div>
+
+  <SyncWaveCompare
+    trackA={deckATrack}
+    trackB={deckBTrack}
+    timeA={deckATime.time}
+    timeB={deckBTime.time}
+    durationA={deckATime.duration}
+    durationB={deckBTime.duration}
+  />
 
       <div className="top">
         <Deck
