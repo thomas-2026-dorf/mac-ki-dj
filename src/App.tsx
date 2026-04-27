@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import "./layout.css";
 
 import Deck from "./components/Deck";
 import Crossfader from "./components/Crossfader";
@@ -28,7 +29,7 @@ function App() {
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
   const [_nextDeck, setNextDeck] = useState<"A" | "B">("A");
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-    const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
+  const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
   const [crossfader, setCrossfader] = useState(0.5);
   const volumeA = 1 - crossfader;
   const volumeB = crossfader;
@@ -164,7 +165,7 @@ function App() {
           track={deckATrack}
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
-          onPlay={() => {}}
+          onPlay={() => { }}
           onSetGridStart={(seconds) => handleSetGridStart("A", seconds)}
           volume={volumeA}
           onLoad={() => {
@@ -186,7 +187,7 @@ function App() {
           track={deckBTrack}
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
-          onPlay={() => {}}
+          onPlay={() => { }}
           onSetGridStart={(seconds) => handleSetGridStart("B", seconds)}
           volume={volumeB}
           onLoad={() => {
@@ -202,29 +203,29 @@ function App() {
           onTrackUpdated={handleTrackUpdated}
         />
 
-      <div className="right-panel">
-        <div className="queue-actions">
-          <button
-            className="automix-button"
-            onClick={autoLoadFreeDeck}
-            disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
-          >
-            Automix
-          </button>
+        <div className="right-panel">
+          <div className="queue-actions">
+            <button
+              className="automix-button"
+              onClick={autoLoadFreeDeck}
+              disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
+            >
+              Automix
+            </button>
 
-          <button className="automix-clear-button" onClick={clearQueue} disabled={queue.length === 0}>
-            Automix leeren
-          </button>
+            <button className="automix-clear-button" onClick={clearQueue} disabled={queue.length === 0}>
+              Automix leeren
+            </button>
+          </div>
+
+          <QueuePanel
+            queue={queue}
+            onRemove={removeFromQueue}
+            onMoveUp={moveUp}
+            onMoveDown={moveDown}
+          />
+          <AiPanel />
         </div>
-
-        <QueuePanel
-          queue={queue}
-          onRemove={removeFromQueue}
-          onMoveUp={moveUp}
-          onMoveDown={moveDown}
-        />
-        <AiPanel />
-      </div>
       </div>
     </div>
   );

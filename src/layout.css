@@ -1,0 +1,71 @@
+
+/* ===== TK-DJ MASTER LAYOUT ===== */
+
+/* unten: Library 2/3, Automix 1/3 */
+.main-bottom {
+  display: grid !important;
+  grid-template-columns: 2fr 1fr !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+}
+
+/* Panels schwarz */
+.track-list,
+.right-panel,
+.queue-panel {
+  background: #050505 !important;
+}
+
+/* Automix rechts sauber voll */
+.right-panel {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* oben: Deck A | Mixer | Deck B */
+.top {
+  display: grid !important;
+  grid-template-columns: 1fr 170px 1fr !important;
+  gap: 12px !important;
+}
+
+/* Mixer optisch wie DJ-Mitte */
+.crossfader {
+  background: #050505 !important;
+  border: 1px solid #1f2937 !important;
+  border-radius: 12px !important;
+  position: relative !important;
+  min-height: 210px !important;
+}
+
+/* Level Meter links/rechts als Optik */
+.crossfader::before,
+.crossfader::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  width: 12px;
+  height: 95px;
+  border-radius: 8px;
+  background: linear-gradient(
+    to top,
+    #22c55e 0%,
+    #22c55e 55%,
+    #eab308 70%,
+    #ef4444 100%
+  );
+  opacity: 0.85;
+}
+
+.crossfader::before {
+  left: 58px;
+}
+
+.crossfader::after {
+  right: 58px;
+}
+
+/* Faderbereich etwas nach unten */
+.crossfader input[type="range"] {
+  margin-top: 120px !important;
+}
