@@ -942,3 +942,74 @@ body {
   flex: 1 !important;
   min-height: 0 !important;
 }
+
+/* ===== TK-DJ FIX: Scrollbereiche + Bearbeiten sichtbar ===== */
+
+.main-bottom {
+  height: calc(100vh - 260px) !important;
+  min-height: 360px !important;
+  overflow: hidden !important;
+}
+
+.track-list {
+  height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.right-panel {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.queue-panel {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Bearbeiten-Felder wieder sichtbar */
+.track-edit-panel {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  align-items: end !important;
+  margin: 8px 0 10px 0 !important;
+  padding: 8px !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 8px !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+}
+
+.track-edit-panel strong {
+  width: 100% !important;
+}
+
+.track-edit-panel label {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+}
+
+.track-edit-panel input {
+  width: 130px !important;
+  padding: 6px !important;
+  border-radius: 6px !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  background: #020617 !important;
+  color: white !important;
+}
+
+.track-edit-actions {
+  display: flex !important;
+  gap: 6px !important;
+}
+
+.track-edit-actions button {
+  padding: 7px 10px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+}

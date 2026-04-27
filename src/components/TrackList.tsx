@@ -4,6 +4,7 @@ import { readDir, readFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 
 import { demoTracks } from "../data/demoTracks";
+import { calculateTransitionScore } from "../modules/transition/transitionScore";
 import type { Track } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
@@ -13,6 +14,7 @@ type Props = {
     onLoadA: (track: Track) => void;
     onTrackSelected?: (track: Track) => void;
     onTrackUpdated?: (track: Track) => void;
+    referenceTrack?: Track | null;
 };
 
 type EditFields = {
@@ -89,6 +91,7 @@ export default function TrackList({
     onLoadA,
     onTrackSelected,
     onTrackUpdated,
+    referenceTrack,
 }: Props) {
     const [tracks, setTracks] = useState<Track[]>([]);
     const [musicFolder, setMusicFolder] = useState<string | null>(null);
@@ -244,7 +247,8 @@ export default function TrackList({
         setTracks(updatedTracks);
         saveLibrary(updatedTracks, musicFolder);
         onTrackUpdated?.(updatedTrack);
-        setEditFields(toEditFields(updatedTrack));
+        setSelectedTrackId(null);
+        setEditFields(null);
     }
 
     function clearSelection() {
@@ -252,28 +256,44 @@ export default function TrackList({
         setEditFields(null);
     }
 
-    const filteredTracks = list.filter((track) => {
-        const query = searchText.trim().toLowerCase();
-        if (!query) return true;
+    const filteredTracks = list
+        .filter((track) => {
+            const query = searchText.trim().toLowerCase();
+            if (!query) return true;
 
-        return [
-            track.title,
-            track.artist,
-            track.genre,
-            String(track.bpm || ""),
-            track.key,
-            String(track.energy || ""),
-            String(track.year || ""),
-        ]
-            .join(" ")
-            .toLowerCase()
-            .includes(query);
-    });
+            return [
+                track.title,
+                track.artist,
+                track.genre,
+                String(track.bpm || ""),
+                track.key,
+                String(track.energy || ""),
+                String(track.year || ""),
+            ]
+                .join(" ")
+                .toLowerCase()
+                .includes(query);
+        })
+        .sort((a, b) => {
+            if (!referenceTrack) return 0;
+            if (a.id === referenceTrack.id) return -1;
+            if (b.id === referenceTrack.id) return 1;
+
+            const scoreA = calculateTransitionScore(referenceTrack, a).score;
+            const scoreB = calculateTransitionScore(referenceTrack, b).score;
+
+            return scoreB - scoreA;
+        });
 
     return (
         <div className="track-list">
             <div className="track-list-title-row">
                 <h2>Songliste</h2>
+                {referenceTrack && (
+                    <span className="track-list-reference">
+                        Automix-Referenz: {referenceTrack.title}
+                    </span>
+                )}
 
                 <button className="library-action-button" type="button" onClick={handleSelectFolder}>
                     Musikordner wählen
@@ -373,14 +393,32 @@ export default function TrackList({
                 <span>Länge</span>
             </div>
 
-            {filteredTracks.map((track) => (
+            {filteredTracks.map((track) => {
+                const transitionScore =
+                    referenceTrack && referenceTrack.id !== track.id
+                        ? calculateTransitionScore(referenceTrack, track)
+                        : null;
+
+                const backgroundColor =
+                    transitionScore && transitionScore.score >= 85
+                        ? "rgba(34, 197, 94, 0.25)" // grün = gut
+                        : transitionScore && transitionScore.score >= 70
+                            ? "rgba(234, 179, 8, 0.15)" // leicht gelb
+                            : undefined;
+
+                return (
                 <div
                     className="track-row"
                     key={track.id}
-                    onClick={() => selectTrack(track)}
+                    onClick={() => setSelectedTrackId(track.id)}
                     onDoubleClick={() => onLoadA(track)}
-                    title="Doppelklick lädt den Song"
+                    title={
+                        transitionScore
+                            ? `Automix-Score: ${transitionScore.score} - ${transitionScore.label}`
+                            : "Doppelklick fügt den Song zu Automix hinzu"
+                    }
                     style={{
+                        backgroundColor,
                         outline:
                             selectedTrackId === track.id
                                 ? "2px solid rgba(56, 189, 248, 0.8)"
@@ -388,7 +426,24 @@ export default function TrackList({
                         cursor: "pointer",
                     }}
                 >
-                    <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                selectTrack(track);
+                            }}
+                            style={{
+                                background: "transparent",
+                                border: "1px solid rgba(255,255,255,0.2)",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                padding: "2px 6px",
+                                color: "#cbd5f5"
+                            }}
+                            title="Bearbeiten"
+                        >
+                            ✏️
+                        </button>
                         <strong>{track.title}</strong>
                     </div>
 
@@ -400,7 +455,8 @@ export default function TrackList({
                     <span>{track.year || "-"}</span>
                     <span>{track.duration}</span>
                 </div>
-            ))}
+                );
+            })}
         </div>
     );
 }

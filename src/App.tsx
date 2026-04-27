@@ -35,6 +35,9 @@ function App() {
   const volumeA = 1 - crossfader;
   const volumeB = crossfader;
 
+  // Automix Referenz (wichtig für spätere Bewertung)
+  const automixReferenceTrack = queue.length > 0 ? queue[0] : null;
+
   const transitionScore =
     deckATrack && deckBTrack
       ? calculateTransitionScore(deckATrack, deckBTrack)
@@ -122,20 +125,7 @@ function App() {
     });
   }
 
-  function smartLoadTrack(track: Track) {
-    // Deck A frei
-    if (!deckATrack) {
-      setDeckATrack(track);
-      return;
-    }
-
-    // Deck B frei
-    if (!deckBTrack) {
-      setDeckBTrack(track);
-      return;
-    }
-
-    // beide belegt → Queue
+  function addTrackToQueue(track: Track) {
     setQueue((prev) => [...prev, track]);
   }
 
@@ -204,9 +194,10 @@ function App() {
 
       <div className="main-bottom">
         <TrackList
-          onLoadA={smartLoadTrack}
+          onLoadA={addTrackToQueue}
           onTrackSelected={setSelectedTrack}
           onTrackUpdated={handleTrackUpdated}
+          referenceTrack={automixReferenceTrack}
         />
 
         <div className="right-panel">
