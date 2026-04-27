@@ -26,6 +26,7 @@ function App() {
   const [deckATrack, setDeckATrack] = useState<Track | undefined>();
   const [deckBTrack, setDeckBTrack] = useState<Track | undefined>();
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [nextDeck, setNextDeck] = useState<"A" | "B">("A");
   const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
   const [crossfader, setCrossfader] = useState(0.5);
@@ -199,6 +200,9 @@ function App() {
           onPlay={() => prepareNextForDeck("A")}
           onSetGridStart={(seconds) => handleSetGridStart("A", seconds)}
           volume={volumeA}
+          onLoad={() => {
+            if (selectedTrack) setDeckATrack(selectedTrack);
+          }}
         />
 
         <Crossfader
@@ -218,12 +222,16 @@ function App() {
           onPlay={() => prepareNextForDeck("B")}
           onSetGridStart={(seconds) => handleSetGridStart("B", seconds)}
           volume={volumeB}
+          onLoad={() => {
+            if (selectedTrack) setDeckBTrack(selectedTrack);
+          }}
         />
       </div>
 
       <div className="main-bottom">
         <TrackList
           onLoadA={smartLoadTrack}
+          onTrackSelected={setSelectedTrack}
           onTrackUpdated={handleTrackUpdated}
         />
 

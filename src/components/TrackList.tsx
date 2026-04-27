@@ -11,6 +11,7 @@ const TRACK_LIBRARY_STORAGE_KEY = "tk-dj-track-library-v1";
 
 type Props = {
     onLoadA: (track: Track) => void;
+    onTrackSelected?: (track: Track) => void;
     onTrackUpdated?: (track: Track) => void;
 };
 
@@ -86,6 +87,7 @@ function cleanAmazonTitle(title: string): string {
 
 export default function TrackList({
     onLoadA,
+    onTrackSelected,
     onTrackUpdated,
 }: Props) {
     const [tracks, setTracks] = useState<Track[]>([]);
@@ -211,6 +213,7 @@ export default function TrackList({
     function selectTrack(track: Track) {
         setSelectedTrackId(track.id);
         setEditFields(toEditFields(track));
+        onTrackSelected?.(track);
     }
 
     function updateEditField<K extends keyof EditFields>(key: K, value: EditFields[K]) {

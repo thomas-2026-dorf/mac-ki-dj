@@ -10,6 +10,7 @@ type DeckProps = {
     onActivate?: () => void;
     onPlay?: () => void;
     volume: number;
+    onLoad?: () => void;
 };
 
 function formatTime(seconds: number): string {
@@ -28,6 +29,7 @@ export default function Deck({
     onActivate,
     onPlay,
     volume,
+    onLoad,
     onSetGridStart,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -305,6 +307,10 @@ export default function Deck({
             )}
 
             <div className="deck-controls" style={{ marginTop: "auto" }}>
+                <button className="load-btn" onClick={onLoad}>
+                    Load
+                </button>
+
                 <button onClick={handlePlayPause} disabled={!track}>
                     {isPlaying ? "Pause" : "Play"}
                 </button>

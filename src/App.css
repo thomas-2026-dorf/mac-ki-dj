@@ -825,3 +825,56 @@ body {
   box-shadow: none !important;
   outline: none !important;
 }
+
+/* --- FIX: Bereiche sauber trennen --- */
+.top {
+  margin-bottom: 10px;
+}
+
+.main-bottom {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.track-list {
+  flex: 1;
+}
+
+.right-panel {
+  width: 320px;
+}
+
+/* TEMP: Waveform Höhe halbieren */
+.waveform {
+  height: 60px !important;
+  max-height: 60px !important;
+  min-height: 60px !important;
+  overflow: hidden !important;
+}
+
+.deck-waveform-container,
+.deck-beatgrid-stage,
+.deck-mini-waveform {
+  height: 60px !important;
+  max-height: 60px !important;
+}
+
+/* Deck Buttons 5 nebeneinander */
+.deck-controls {
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+/* Load Button (grün) */
+.load-btn {
+  background: #16a34a;
+  color: white;
+  border: none;
+}
+
+/* Alle Buttons gleich */
+.deck-controls button {
+  width: 100%;
+}
