@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { buildSyncPlan, formatPitchPercent, formatPlaybackRate } from "../modules/sync/syncEngine";
 
 type CrossfaderProps = {
     onActiveDeckChange: (deck: "A" | "B") => void;
@@ -19,24 +20,29 @@ export default function Crossfader({ onActiveDeckChange, onChange, bpmA, bpmB }:
     }
 
     const masterDeck = value <= 50 ? "A" : "B";
+    const targetDeck = masterDeck === "A" ? "B" : "A";
+
     const masterBpm = masterDeck === "A" ? bpmA : bpmB;
     const targetBpm = masterDeck === "A" ? bpmB : bpmA;
 
-    const pitchPercent =
-        masterBpm && targetBpm
-            ? ((masterBpm / targetBpm - 1) * 100).toFixed(1)
-            : null;
+    const syncPlan = buildSyncPlan({
+        masterBpm: masterBpm ?? null,
+        targetBpm: targetBpm ?? null,
+    });
 
     return (
-        <div className="crossfader">
+        <div className={`crossfader sync-${syncPlan.rating}`}>
             <div className="sync-info">
                 <strong>SYNC</strong>
                 <span>Master: {masterDeck}</span>
+                <span>Ziel: Deck {targetDeck}</span>
                 <span>
-                    {masterBpm && targetBpm
-                        ? `${targetBpm} → ${masterBpm} BPM (${pitchPercent}%)`
+                    {syncPlan.masterBpm && syncPlan.targetBpm
+                        ? `${syncPlan.targetBpm} → ${syncPlan.masterBpm} BPM`
                         : "BPM fehlt"}
                 </span>
+                <span>Pitch: {formatPitchPercent(syncPlan.pitchPercent)}</span>
+                <span>Rate: {formatPlaybackRate(syncPlan.playbackRate)}</span>
             </div>
 
             <div className="labels">
@@ -61,17 +67,17 @@ export default function Crossfader({ onActiveDeckChange, onChange, bpmA, bpmB }:
                 <div className="deck-mixer-controls">
                     <strong>Deck A</strong>
                     <label>Vol <input type="range" min="0" max="100" defaultValue="100" /></label>
-                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
                     <label>Höhen <input type="range" min="-12" max="12" defaultValue="0" /></label>
-                    <label>Pitch <input type="range" min="-8" max="8" defaultValue="0" /></label>
+                    <label>Mitten <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
                 </div>
 
                 <div className="deck-mixer-controls">
                     <strong>Deck B</strong>
                     <label>Vol <input type="range" min="0" max="100" defaultValue="100" /></label>
-                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
                     <label>Höhen <input type="range" min="-12" max="12" defaultValue="0" /></label>
-                    <label>Pitch <input type="range" min="-8" max="8" defaultValue="0" /></label>
+                    <label>Mitten <input type="range" min="-12" max="12" defaultValue="0" /></label>
+                    <label>Bass <input type="range" min="-12" max="12" defaultValue="0" /></label>
                 </div>
             </div>
         </div>

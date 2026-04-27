@@ -38,6 +38,7 @@ export default function Deck({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const [pitchPercent, setPitchPercent] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const waveformRef = useRef<HTMLDivElement | null>(null);
@@ -170,7 +171,20 @@ export default function Deck({
     }
 
     return (
-        <div className={`deck ${isActive ? "active-deck" : ""}`} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div className={`deck ${isActive ? "active-deck" : ""}`} style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative", paddingRight: "44px" }}>
+            <div className="deck-pitch-control">
+                <span>Pitch</span>
+                <input
+                    type="range"
+                    min="-8"
+                    max="8"
+                    step="0.1"
+                    value={pitchPercent}
+                    onChange={(event) => setPitchPercent(Number(event.target.value))}
+                />
+                <strong>{pitchPercent > 0 ? "+" : ""}{pitchPercent.toFixed(1)}%</strong>
+            </div>
+
             <div className="deck-header">
                 <h2>{title}</h2>
 

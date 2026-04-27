@@ -306,3 +306,36 @@
 .track-edit-panel[hidden] {
   display: none !important;
 }
+
+/* ===== TK-DJ: Pitch-Regler direkt am Deck ===== */
+
+.deck-pitch-control {
+  position: absolute !important;
+  top: 54px !important;
+  right: 8px !important;
+  bottom: 54px !important;
+  width: 30px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  z-index: 5 !important;
+  font-size: 10px !important;
+  color: #cbd5e1 !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  border-radius: 10px !important;
+}
+
+.deck-pitch-control input[type="range"] {
+  writing-mode: vertical-lr !important;
+  direction: rtl !important;
+  width: 22px !important;
+  height: 120px !important;
+}
+
+.deck-pitch-control strong {
+  font-size: 10px !important;
+  color: #f8fafc !important;
+}
