@@ -358,6 +358,12 @@ export default function Deck({
                 />
             )}
 
+
+            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px" }}>
+                Beats: {track?.analysis?.beats?.length ?? 0} |
+                GridStart: {track?.analysis?.beatGridStartSeconds ?? "-"}
+            </div>
+
             <div className="deck-info">
                 <div>
                     BPM: {track ? pitchedBpm.toFixed(1) : "-"}
