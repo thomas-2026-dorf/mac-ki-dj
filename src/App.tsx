@@ -155,23 +155,6 @@ function App() {
     setQueue(remainingQueue);
   }
 
-  function prepareNextForDeck(playingDeck: "A" | "B") {
-    if (queue.length === 0) return;
-
-    const [nextTrack, ...remainingQueue] = queue;
-
-    if (playingDeck === "A" && !deckBTrack) {
-      setDeckBTrack(nextTrack);
-      setNextDeck("A");
-      setQueue(remainingQueue);
-    }
-
-    if (playingDeck === "B" && !deckATrack) {
-      setDeckATrack(nextTrack);
-      setNextDeck("B");
-      setQueue(remainingQueue);
-    }
-  }
 
   return (
     <div className="app">
@@ -181,7 +164,7 @@ function App() {
           track={deckATrack}
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
-          onPlay={() => prepareNextForDeck("A")}
+          onPlay={() => {}}
           onSetGridStart={(seconds) => handleSetGridStart("A", seconds)}
           volume={volumeA}
           onLoad={() => {
@@ -203,7 +186,7 @@ function App() {
           track={deckBTrack}
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
-          onPlay={() => prepareNextForDeck("B")}
+          onPlay={() => {}}
           onSetGridStart={(seconds) => handleSetGridStart("B", seconds)}
           volume={volumeB}
           onLoad={() => {

@@ -1,24 +1,24 @@
 import type { Track } from "../types/track";
 
-type QueuePanelProps = {
+type AutomixPanelProps = {
     queue: Track[];
     onRemove: (trackId: string) => void;
     onMoveUp: (index: number) => void;
     onMoveDown: (index: number) => void;
 };
 
-export default function QueuePanel({
+export default function AutomixPanel({
     queue,
     onRemove,
     onMoveUp,
     onMoveDown,
-}: QueuePanelProps) {
+}: AutomixPanelProps) {
     return (
         <div className="queue-panel">
-            <h2>Queue</h2>
+            <h2>Automix</h2>
 
             {queue.length === 0 ? (
-                <p className="empty-queue">Noch keine Songs in der Queue</p>
+                <p className="empty-queue">Noch keine Songs in der Automix</p>
             ) : (
                 <div className="queue-list">
                     {queue.map((track, index) => (

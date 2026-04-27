@@ -744,9 +744,10 @@ body {
 
 
 .main-bottom {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
   gap: 12px;
+  align-items: stretch;
 }
 
 .main-bottom .track-list {
@@ -781,7 +782,10 @@ body {
 
 /* sauberer Abstand zwischen Decks und Inhalt */
 .main-bottom {
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: stretch;
 }
 
 /* Songliste bekommt klaren Rand */
@@ -832,9 +836,10 @@ body {
 }
 
 .main-bottom {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: stretch;
 }
 
 .track-list {
@@ -908,4 +913,32 @@ body {
 .automix-clear-button {
   background: #991b1b;
   color: white;
+}
+
+/* TK-DJ: Automix-Bereich rechts sauber an freie Fläche anpassen */
+.main-bottom {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.right-panel {
+  width: 100% !important;
+  height: 100% !important;
+  align-self: stretch !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.queue-actions {
+  display: flex !important;
+  gap: 8px !important;
+  justify-content: flex-end !important;
+  margin-bottom: 10px !important;
+}
+
+.queue-panel {
+  flex: 1 !important;
+  min-height: 0 !important;
 }
