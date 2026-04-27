@@ -410,7 +410,10 @@ export default function TrackList({
                 <div
                     className="track-row"
                     key={track.id}
-                    onClick={() => setSelectedTrackId(track.id)}
+                    onClick={() => {
+                        setSelectedTrackId(track.id);
+                        onTrackSelected?.(track);
+                    }}
                     onDoubleClick={() => onLoadA(track)}
                     title={
                         transitionScore

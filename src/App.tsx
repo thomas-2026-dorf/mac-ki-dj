@@ -38,9 +38,14 @@ function App() {
   // Automix Referenz (wichtig für spätere Bewertung)
   const automixReferenceTrack = queue.length > 0 ? queue[0] : null;
 
-  const transitionScore =
+  const deckTransitionScore =
     deckATrack && deckBTrack
       ? calculateTransitionScore(deckATrack, deckBTrack)
+      : null;
+
+  const automixTransitionScore =
+    queue.length >= 2
+      ? calculateTransitionScore(queue[0], queue[1])
       : null;
 
   useEffect(() => {
@@ -135,6 +140,26 @@ function App() {
 
     const [nextTrack, ...remainingQueue] = queue;
 
+    // Automix-Start: Wenn beide Decks leer sind, zuerst Deck A laden
+    // und den zweiten Automix-Song direkt in Deck B vorbereiten.
+    if (!deckATrack && !deckBTrack) {
+      const [secondTrack, ...restQueue] = remainingQueue;
+
+      setDeckATrack(nextTrack);
+      setActiveDeck("A");
+      setNextDeck("B");
+
+      if (secondTrack) {
+        setDeckBTrack(secondTrack);
+        setQueue(restQueue);
+      } else {
+        setQueue(remainingQueue);
+      }
+
+      return;
+    }
+
+    // Wenn ein Deck läuft/geladen ist, den nächsten Song ins freie Gegendeck laden.
     if (!deckBTrack && activeDeck === "A") {
       setDeckBTrack(nextTrack);
       setNextDeck("A");
@@ -167,11 +192,14 @@ function App() {
           onLoad={() => {
             if (selectedTrack) setDeckATrack(selectedTrack);
           }}
+          onEject={() => setDeckATrack(undefined)}
         />
 
         <Crossfader
           onActiveDeckChange={setActiveDeck}
           onChange={setCrossfader}
+          bpmA={deckATrack?.bpm}
+          bpmB={deckBTrack?.bpm}
         />
 
         <div style={{ display: "none" }} aria-hidden="true">
@@ -189,6 +217,7 @@ function App() {
           onLoad={() => {
             if (selectedTrack) setDeckBTrack(selectedTrack);
           }}
+          onEject={() => setDeckBTrack(undefined)}
         />
       </div>
 
@@ -202,17 +231,32 @@ function App() {
 
         <div className="right-panel">
           <div className="transition-score-box">
-            <strong>Übergang A → B</strong>
-            {transitionScore ? (
+            {queue.length >= 2 && automixTransitionScore ? (
               <>
+                <strong>Automix: {queue[0].title} → {queue[1].title}</strong>
                 <span>
-                  {transitionScore.label} ({transitionScore.score})
+                  {automixTransitionScore.label} ({automixTransitionScore.score})
                 </span>
-                <small>{transitionScore.reasons[0]}</small>
+                <small>{automixTransitionScore.reasons[0]}</small>
+              </>
+            ) : queue.length === 1 ? (
+              <>
+                <strong>Automix-Start</strong>
+                <span>{queue[0].title}</span>
+                <small>Füge weitere Songs hinzu, dann bewertet TK-DJ den nächsten Übergang.</small>
+              </>
+            ) : deckTransitionScore ? (
+              <>
+                <strong>Übergang A → B</strong>
+                <span>
+                  {deckTransitionScore.label} ({deckTransitionScore.score})
+                </span>
+                <small>{deckTransitionScore.reasons[0]}</small>
               </>
             ) : (
               <>
-                <span>2 Songs laden</span>
+                <strong>Übergang</strong>
+                <span>Automix oder 2 Decks laden</span>
                 <small>Dann berechnet TK-DJ den ersten Mix-Score.</small>
               </>
             )}

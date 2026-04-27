@@ -11,6 +11,7 @@ type DeckProps = {
     onPlay?: () => void;
     volume: number;
     onLoad?: () => void;
+    onEject?: () => void;
 };
 
 function formatTime(seconds: number): string {
@@ -30,6 +31,7 @@ export default function Deck({
     onPlay,
     volume,
     onLoad,
+    onEject,
     onSetGridStart,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -175,6 +177,12 @@ export default function Deck({
                 <div className="deck-header-right">
                     {isActive && <span className="live-badge">LIVE</span>}
 
+                    {track && (
+                        <button className="activate-btn" onClick={onEject} title="Track auswerfen">
+                            Auswerfen
+                        </button>
+                    )}
+
                     <button className="activate-btn" onClick={onActivate}>
                         Aktiv
                     </button>
@@ -274,6 +282,8 @@ export default function Deck({
                             <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
                         </div>
 
+
+
                         {cuePoints.length > 0 && (
                             <div className="deck-cue-list">
                                 {cuePoints.map((cuePoint) => (
@@ -291,6 +301,24 @@ export default function Deck({
                     <span>Kein Track</span>
                 )}
             </div>
+
+            {track && (
+                <input
+                    type="range"
+                    className="deck-song-position"
+                    min="0"
+                    max={duration || 0}
+                    step="0.1"
+                    value={currentTime}
+                    onChange={(event) => {
+                        const nextTime = Number(event.target.value);
+                        if (audioRef.current) {
+                            audioRef.current.currentTime = nextTime;
+                        }
+                        setCurrentTime(nextTime);
+                    }}
+                />
+            )}
 
             <div className="deck-info">
                 <div>BPM: {track ? track.bpm : "-"}</div>
