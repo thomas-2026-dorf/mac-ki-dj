@@ -216,3 +216,93 @@
   background: #3b82f6 !important;
 }
 
+
+/* ===== FIX: richtige geladene Datei - Mixer höher + Bearbeitung aus ===== */
+
+.track-edit-panel {
+  display: none !important;
+}
+
+.top {
+  height: 350px !important;
+  min-height: 350px !important;
+  max-height: 350px !important;
+}
+
+.deck {
+  height: 320px !important;
+  min-height: 320px !important;
+  max-height: 320px !important;
+}
+
+.crossfader {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+  height: 320px !important;
+  min-height: 320px !important;
+  max-height: 320px !important;
+  overflow: hidden !important;
+  padding: 8px !important;
+}
+
+.mixer-controls {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  margin-top: 4px !important;
+}
+
+.deck-mixer-controls {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+}
+
+.deck-mixer-controls label {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+.deck-mixer-controls input[type="range"] {
+  width: 100% !important;
+  height: 12px !important;
+}
+
+/* ===== TK-DJ FIX: breiter Mixer, Decks sauber anpassen, Edit-Panel wieder nutzbar ===== */
+
+/* Oben: Deck A | Mixer | Deck B */
+.top {
+  grid-template-columns: minmax(0, 1fr) 280px minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+/* Mixer wirklich 280px breit */
+.crossfader {
+  width: 280px !important;
+  min-width: 280px !important;
+  max-width: 280px !important;
+  box-sizing: border-box !important;
+}
+
+/* Decks dürfen nicht unter den Mixer laufen */
+.deck {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Edit-Panel nicht global hart ausblenden */
+.track-edit-panel {
+  display: grid !important;
+}
+
+/* Falls es ein verstecktes Panel gibt, bleibt hidden weiterhin versteckt */
+.track-edit-panel.hidden,
+.track-edit-panel[hidden] {
+  display: none !important;
+}
