@@ -26,9 +26,9 @@ function App() {
   const [deckATrack, setDeckATrack] = useState<Track | undefined>();
   const [deckBTrack, setDeckBTrack] = useState<Track | undefined>();
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
+  const [_nextDeck, setNextDeck] = useState<"A" | "B">("A");
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-  const [nextDeck, setNextDeck] = useState<"A" | "B">("A");
-  const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
+    const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
   const [crossfader, setCrossfader] = useState(0.5);
   const volumeA = 1 - crossfader;
   const volumeB = crossfader;
@@ -113,22 +113,6 @@ function App() {
       ];
       return newQueue;
     });
-  }
-
-  function loadNextTrack() {
-    if (queue.length === 0) return;
-
-    const [nextTrack, ...remainingQueue] = queue;
-
-    if (nextDeck === "A") {
-      setDeckATrack(nextTrack);
-      setNextDeck("B");
-    } else {
-      setDeckBTrack(nextTrack);
-      setNextDeck("A");
-    }
-
-    setQueue(remainingQueue);
   }
 
   function smartLoadTrack(track: Track) {
@@ -237,19 +221,16 @@ function App() {
 
       <div className="right-panel">
         <div className="queue-actions">
-          <button onClick={loadNextTrack} disabled={queue.length === 0}>
-            Next → Deck {nextDeck}
-          </button>
-
           <button
+            className="automix-button"
             onClick={autoLoadFreeDeck}
             disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
           >
-            Auto Load frei
+            Automix
           </button>
 
-          <button onClick={clearQueue} disabled={queue.length === 0}>
-            Queue leeren
+          <button className="automix-clear-button" onClick={clearQueue} disabled={queue.length === 0}>
+            Automix leeren
           </button>
         </div>
 

@@ -878,3 +878,34 @@ body {
 .deck-controls button {
   width: 100%;
 }
+
+/* TK-DJ: Songlisten-Kopf und Automix Buttons */
+.track-list-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.track-list-title-row h2 {
+  margin: 0;
+}
+
+.library-action-button,
+.automix-button,
+.automix-clear-button {
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.automix-button {
+  background: #16a34a;
+  color: white;
+}
+
+.automix-clear-button {
+  background: #991b1b;
+  color: white;
+}

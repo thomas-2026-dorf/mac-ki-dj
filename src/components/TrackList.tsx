@@ -275,32 +275,10 @@ export default function TrackList({
             <div className="track-list-title-row">
                 <h2>Songliste</h2>
 
-                <button type="button" onClick={handleSelectFolder}>
+                <button className="library-action-button" type="button" onClick={handleSelectFolder}>
                     Musikordner wählen
                 </button>
-
-                <button
-                    type="button"
-                    onClick={() => {
-                        const cleanedTracks = tracks.map((track) => ({
-                            ...track,
-                            title: cleanAmazonTitle(track.title),
-                        }));
-
-                        setTracks(cleanedTracks);
-                        saveLibrary(cleanedTracks, musicFolder);
-                    }}
-                    disabled={tracks.length === 0}
-                >
-                    Titel bereinigen
-                </button>
             </div>
-
-            {musicFolder && (
-                <div className="music-folder-info">
-                    Musikordner: {musicFolder}
-                </div>
-            )}
 
             <div className="track-edit-panel">
                 <strong>
