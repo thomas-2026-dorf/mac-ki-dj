@@ -3,6 +3,7 @@ import "./App.css";
 import "./layout.css";
 
 import Deck from "./components/Deck";
+import SyncWavePanel from "./components/SyncWavePanel";
 import Crossfader from "./components/Crossfader";
 import TrackList from "./components/TrackList";
 import AiPanel from "./components/AiPanel";
@@ -35,6 +36,11 @@ function App() {
   const volumeA = 1 - crossfader;
   const volumeB = crossfader;
 
+  const [deckATime, setDeckATime] = useState({ time: 0, duration: 0 });
+  const [deckBTime, setDeckBTime] = useState({ time: 0, duration: 0 });
+  const [deckASeekTo, setDeckASeekTo] = useState<number | null>(null);
+  const [deckBSeekTo, setDeckBSeekTo] = useState<number | null>(null);
+
   // Automix Referenz (wichtig für spätere Bewertung)
   const automixReferenceTrack = queue.length > 0 ? queue[0] : null;
 
@@ -51,36 +57,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   }, [queue]);
-
-  function updateTrackGridStart(track: Track, seconds: number): Track {
-    return {
-      ...track,
-      analysis: {
-        ...(track.analysis || {
-          status: "none" as const,
-          cuePoints: [],
-          loops: [],
-        }),
-        beatGridStartSeconds: seconds,
-        cuePoints: track.analysis?.cuePoints || [],
-        loops: track.analysis?.loops || [],
-      },
-    };
-  }
-
-  function handleSetGridStart(deck: "A" | "B", seconds: number) {
-    if (deck === "A") {
-      setDeckATrack((current) =>
-        current ? updateTrackGridStart(current, seconds) : current,
-      );
-    }
-
-    if (deck === "B") {
-      setDeckBTrack((current) =>
-        current ? updateTrackGridStart(current, seconds) : current,
-      );
-    }
-  }
 
   function handleTrackUpdated(updatedTrack: Track) {
     setDeckATrack((current) =>
@@ -180,6 +156,11 @@ function App() {
 
   return (
     <div className="app">
+      <div className="sync-waves">
+        <SyncWavePanel deck="A" track={deckATrack} time={deckATime.time} duration={deckATime.duration} onSeek={setDeckASeekTo} />
+        <SyncWavePanel deck="B" track={deckBTrack} time={deckBTime.time} duration={deckBTime.duration} onSeek={setDeckBSeekTo} />
+      </div>
+
       <div className="top">
         <Deck
           title="Deck A"
@@ -187,7 +168,9 @@ function App() {
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
           onPlay={() => { }}
-          onSetGridStart={(seconds) => handleSetGridStart("A", seconds)}
+          syncMasterBpm={activeDeck === "B" ? deckBTrack?.bpm ?? null : null}
+          onTimeUpdateGlobal={(time, duration) => setDeckATime({ time, duration })}
+          seekToTime={deckASeekTo}
           volume={volumeA}
           onLoad={() => {
             if (selectedTrack) setDeckATrack(selectedTrack);
@@ -212,7 +195,9 @@ function App() {
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
           onPlay={() => { }}
-          onSetGridStart={(seconds) => handleSetGridStart("B", seconds)}
+          syncMasterBpm={activeDeck === "A" ? deckATrack?.bpm ?? null : null}
+          onTimeUpdateGlobal={(time, duration) => setDeckBTime({ time, duration })}
+          seekToTime={deckBSeekTo}
           volume={volumeB}
           onLoad={() => {
             if (selectedTrack) setDeckBTrack(selectedTrack);

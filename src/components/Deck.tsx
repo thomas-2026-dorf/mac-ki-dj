@@ -3,7 +3,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Track } from "../types/track";
 
 type DeckProps = {
-    onSetGridStart?: (seconds: number) => void;
+        syncMasterBpm?: number | null;
+    onTimeUpdateGlobal?: (time: number, duration: number) => void;
+    seekToTime?: number | null;
     title: string;
     track?: Track;
     isActive?: boolean;
@@ -32,7 +34,9 @@ export default function Deck({
     volume,
     onLoad,
     onEject,
-    onSetGridStart,
+        syncMasterBpm,
+    onTimeUpdateGlobal,
+    seekToTime,
 }: DeckProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -45,7 +49,9 @@ export default function Deck({
 
     const waveform = track?.analysis?.waveform ?? [];
     const cuePoints = track?.analysis?.cuePoints ?? [];
-    const bpm = track?.bpm ?? 0;
+    const originalBpm = track?.bpm ?? 0;
+    const pitchedBpm = originalBpm > 0 ? originalBpm * (1 + pitchPercent / 100) : 0;
+    const bpm = pitchedBpm;
     const beatDuration = bpm > 0 ? 60 / bpm : 0;
     const beatGridStart =
         track?.analysis?.beatGridStartSeconds ??
@@ -110,6 +116,15 @@ export default function Deck({
     }, [volume]);
 
     useEffect(() => {
+        if (!audioRef.current || seekToTime === null || seekToTime === undefined) return;
+
+        const nextTime = Math.max(0, Math.min(seekToTime, duration || seekToTime));
+        audioRef.current.currentTime = nextTime;
+        setCurrentTime(nextTime);
+    }, [seekToTime, duration]);
+
+
+    useEffect(() => {
         if (!audioRef.current) return;
 
         if (!track?.url) {
@@ -149,6 +164,15 @@ export default function Deck({
         }
     }
 
+    function handleTempoSync() {
+        if (!originalBpm || !syncMasterBpm || originalBpm <= 0 || syncMasterBpm <= 0) return;
+
+        const nextPitch = (syncMasterBpm / originalBpm - 1) * 100;
+        const limitedPitch = Math.max(-8, Math.min(8, nextPitch));
+
+        setPitchPercent(limitedPitch);
+    }
+
     function handleStop() {
         if (audioRef.current) {
             audioRef.current.pause();
@@ -172,7 +196,7 @@ export default function Deck({
 
     return (
         <div className={`deck ${isActive ? "active-deck" : ""}`} style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative", paddingRight: "44px" }}>
-            <div className="deck-pitch-control">
+            <div className="deck-pitch-control" onDoubleClick={() => setPitchPercent(0)} title="Doppelklick setzt Pitch auf 0">
                 <span>Pitch</span>
                 <input
                     type="range"
@@ -335,7 +359,10 @@ export default function Deck({
             )}
 
             <div className="deck-info">
-                <div>BPM: {track ? track.bpm : "-"}</div>
+                <div>
+                    BPM: {track ? pitchedBpm.toFixed(1) : "-"}
+                    {track && pitchPercent !== 0 ? ` (${originalBpm} / ${pitchPercent > 0 ? "+" : ""}${pitchPercent.toFixed(1)}%)` : ""}
+                </div>
                 <div>Key: {track ? track.key : "-"}</div>
                 <div>Energy: {track ? track.energy : "-"}</div>
             </div>
@@ -362,19 +389,19 @@ export default function Deck({
                 </button>
 
                 <button disabled={!track}>Cue</button>
-                <button
-    onClick={() => {
-        if (!track) return;
-        onSetGridStart?.(currentTime);
-    }}
->
-    Sync
-</button>
+                <button onClick={handleTempoSync} disabled={!track || !syncMasterBpm}>
+                    Sync
+                </button>
             </div>
 
 <audio
                 ref={audioRef}
-                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                onTimeUpdate={(event) => {
+                    const t = event.currentTarget.currentTime;
+                    const d = event.currentTarget.duration || 0;
+                    setCurrentTime(t);
+                    onTimeUpdateGlobal?.(t, d);
+                }}
                 onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
                 onEnded={() => setIsPlaying(false)}
             />
