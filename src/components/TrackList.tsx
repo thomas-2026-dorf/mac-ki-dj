@@ -177,6 +177,7 @@ export default function TrackList({
                 genre: externalData?.genre || tagData.genre || "-",
                 url,
                 year: externalData?.year || tagData.year,
+                analysis: externalData?.analysis,
             });
         }
 
@@ -407,57 +408,57 @@ export default function TrackList({
                             : undefined;
 
                 return (
-                <div
-                    className="track-row"
-                    key={track.id}
-                    onClick={() => {
-                        setSelectedTrackId(track.id);
-                        onTrackSelected?.(track);
-                    }}
-                    onDoubleClick={() => onLoadA(track)}
-                    title={
-                        transitionScore
-                            ? `Automix-Score: ${transitionScore.score} - ${transitionScore.label}`
-                            : "Doppelklick fügt den Song zu Automix hinzu"
-                    }
-                    style={{
-                        backgroundColor,
-                        outline:
-                            selectedTrackId === track.id
-                                ? "2px solid rgba(56, 189, 248, 0.8)"
-                                : "none",
-                        cursor: "pointer",
-                    }}
-                >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                selectTrack(track);
-                            }}
-                            style={{
-                                background: "transparent",
-                                border: "1px solid rgba(255,255,255,0.2)",
-                                borderRadius: "4px",
-                                cursor: "pointer",
-                                padding: "2px 6px",
-                                color: "#cbd5f5"
-                            }}
-                            title="Bearbeiten"
-                        >
-                            ✏️
-                        </button>
-                        <strong>{track.title}</strong>
-                    </div>
+                    <div
+                        className="track-row"
+                        key={track.id}
+                        onClick={() => {
+                            setSelectedTrackId(track.id);
+                            onTrackSelected?.(track);
+                        }}
+                        onDoubleClick={() => onLoadA(track)}
+                        title={
+                            transitionScore
+                                ? `Automix-Score: ${transitionScore.score} - ${transitionScore.label}`
+                                : "Doppelklick fügt den Song zu Automix hinzu"
+                        }
+                        style={{
+                            backgroundColor,
+                            outline:
+                                selectedTrackId === track.id
+                                    ? "2px solid rgba(56, 189, 248, 0.8)"
+                                    : "none",
+                            cursor: "pointer",
+                        }}
+                    >
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    selectTrack(track);
+                                }}
+                                style={{
+                                    background: "transparent",
+                                    border: "1px solid rgba(255,255,255,0.2)",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                    padding: "2px 6px",
+                                    color: "#cbd5f5"
+                                }}
+                                title="Bearbeiten"
+                            >
+                                ✏️
+                            </button>
+                            <strong>{track.title}</strong>
+                        </div>
 
-                    <span>{track.artist}</span>
-                    <span>{track.bpm || "-"}</span>
-                    <span>{track.key}</span>
-                    <span>{track.energy || "-"}</span>
-                    <span>{track.genre}</span>
-                    <span>{track.year || "-"}</span>
-                    <span>{track.duration}</span>
-                </div>
+                        <span>{track.artist}</span>
+                        <span>{track.bpm || "-"}</span>
+                        <span>{track.key}</span>
+                        <span>{track.energy || "-"}</span>
+                        <span>{track.genre}</span>
+                        <span>{track.year || "-"}</span>
+                        <span>{track.duration}</span>
+                    </div>
                 );
             })}
         </div>

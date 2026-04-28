@@ -3,7 +3,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Track } from "../types/track";
 
 type DeckProps = {
-        syncMasterBpm?: number | null;
+    syncMasterBpm?: number | null;
+    syncMasterTrack?: Track;
+    syncMasterTime?: number;
     onTimeUpdateGlobal?: (time: number, duration: number) => void;
     seekToTime?: number | null;
     title: string;
@@ -34,7 +36,9 @@ export default function Deck({
     volume,
     onLoad,
     onEject,
-        syncMasterBpm,
+    syncMasterBpm,
+    syncMasterTrack,
+    syncMasterTime = 0,
     onTimeUpdateGlobal,
     seekToTime,
 }: DeckProps) {
@@ -53,7 +57,9 @@ export default function Deck({
     const pitchedBpm = originalBpm > 0 ? originalBpm * (1 + pitchPercent / 100) : 0;
     const bpm = pitchedBpm;
     const beatDuration = bpm > 0 ? 60 / bpm : 0;
-    const beatGridStart =
+
+    // Fallback Beatgrid wenn keine echten Beats vorhanden
+        const beatGridStart =
         track?.analysis?.beatGridStartSeconds ??
         cuePoints.find((cuePoint) => cuePoint.type === "drum" || cuePoint.type === "start")?.timeSeconds ??
         0;
@@ -116,6 +122,29 @@ export default function Deck({
     }, [volume]);
 
     useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.playbackRate = 1 + pitchPercent / 100;
+        }
+    }, [pitchPercent]);
+
+    useEffect(() => {
+        if (!isPlaying) return;
+
+        const interval = window.setInterval(() => {
+            if (!audioRef.current) return;
+
+            const t = audioRef.current.currentTime;
+            const d = audioRef.current.duration || duration || 0;
+
+            setCurrentTime(t);
+            onTimeUpdateGlobal?.(t, d);
+        }, 25);
+
+        return () => window.clearInterval(interval);
+    }, [isPlaying, duration, onTimeUpdateGlobal]);
+
+
+    useEffect(() => {
         if (!audioRef.current || seekToTime === null || seekToTime === undefined) return;
 
         const nextTime = Math.max(0, Math.min(seekToTime, duration || seekToTime));
@@ -165,12 +194,63 @@ export default function Deck({
     }
 
     function handleTempoSync() {
-        if (!originalBpm || !syncMasterBpm || originalBpm <= 0 || syncMasterBpm <= 0) return;
+        if (!audioRef.current || !track || !syncMasterBpm || !syncMasterTrack) return;
 
-        const nextPitch = (syncMasterBpm / originalBpm - 1) * 100;
+        const slaveOriginalBpm = track.bpm ?? 0;
+        const masterBpm = syncMasterBpm ?? 0;
+
+        if (slaveOriginalBpm <= 0 || masterBpm <= 0) return;
+
+        // 1. Tempo angleichen
+        const nextPitch = (masterBpm / slaveOriginalBpm - 1) * 100;
         const limitedPitch = Math.max(-8, Math.min(8, nextPitch));
+        const playbackRate = 1 + limitedPitch / 100;
 
         setPitchPercent(limitedPitch);
+        audioRef.current.playbackRate = playbackRate;
+
+        // 2. 4er-Phase angleichen: 1-2-3-4 auf 1-2-3-4
+        const masterBeatSeconds = 60 / masterBpm;
+        const barSeconds = masterBeatSeconds * 4;
+
+        const masterGridStart = syncMasterTrack.analysis?.beatGridStartSeconds ?? 0;
+        const slaveGridStart = track.analysis?.beatGridStartSeconds ?? 0;
+
+        const masterPositionInBar =
+            ((syncMasterTime - masterGridStart) % barSeconds + barSeconds) % barSeconds;
+
+        const slaveNow = audioRef.current.currentTime;
+        const slaveCurrentBarIndex = Math.floor((slaveNow - slaveGridStart) / barSeconds);
+
+        const candidateTimes = [
+            slaveGridStart + (slaveCurrentBarIndex - 1) * barSeconds + masterPositionInBar,
+            slaveGridStart + slaveCurrentBarIndex * barSeconds + masterPositionInBar,
+            slaveGridStart + (slaveCurrentBarIndex + 1) * barSeconds + masterPositionInBar,
+        ].filter((value) => value >= 0);
+
+        const targetTime = candidateTimes.reduce((best, value) =>
+            Math.abs(value - slaveNow) < Math.abs(best - slaveNow) ? value : best,
+        );
+
+        const sameTrack =
+            syncMasterTrack.id === track.id ||
+            syncMasterTrack.title === track.title;
+
+        const syncCorrectionSeconds = 0.10;
+        const finalTargetTime = sameTrack ? syncMasterTime + syncCorrectionSeconds : targetTime + syncCorrectionSeconds;
+
+        audioRef.current.currentTime = finalTargetTime;
+        setCurrentTime(finalTargetTime);
+        onTimeUpdateGlobal?.(finalTargetTime, duration);
+
+        console.log("SYNC PHASE", {
+            masterTime: syncMasterTime,
+            slaveBefore: slaveNow,
+            slaveAfter: targetTime,
+            masterPositionInBar,
+            pitch: limitedPitch,
+            playbackRate,
+        });
     }
 
     function handleStop() {
@@ -408,7 +488,11 @@ export default function Deck({
                     setCurrentTime(t);
                     onTimeUpdateGlobal?.(t, d);
                 }}
-                onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+                onLoadedMetadata={(event) => {
+                    const d = event.currentTarget.duration || 0;
+                    setDuration(d);
+                    onTimeUpdateGlobal?.(0, d);
+                }}
                 onEnded={() => setIsPlaying(false)}
             />
         </div>

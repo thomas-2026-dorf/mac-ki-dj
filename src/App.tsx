@@ -179,6 +179,8 @@ function App() {
           onActivate={() => setActiveDeck("A")}
           onPlay={() => { }}
           syncMasterBpm={activeDeck === "B" ? deckBTrack?.bpm ?? null : null}
+          syncMasterTrack={activeDeck === "B" ? deckBTrack : undefined}
+          syncMasterTime={activeDeck === "B" ? deckBTime.time : 0}
           onTimeUpdateGlobal={(time, duration) => setDeckATime({ time, duration })}
           seekToTime={deckASeekTo}
           volume={volumeA}
@@ -206,6 +208,8 @@ function App() {
           onActivate={() => setActiveDeck("B")}
           onPlay={() => { }}
           syncMasterBpm={activeDeck === "A" ? deckATrack?.bpm ?? null : null}
+          syncMasterTrack={activeDeck === "A" ? deckATrack : undefined}
+          syncMasterTime={activeDeck === "A" ? deckATime.time : 0}
           onTimeUpdateGlobal={(time, duration) => setDeckBTime({ time, duration })}
           seekToTime={deckBSeekTo}
           volume={volumeB}

@@ -17,13 +17,9 @@ export default function SyncWavePanel({ deck, track, time = 0, duration = 0, onS
     const visibleSeconds = 48;
     const halfWindow = visibleSeconds / 2;
 
-    const visibleStart =
-        duration > visibleSeconds
-            ? Math.min(Math.max(0, time - halfWindow), duration - visibleSeconds)
-            : 0;
-
-    const visibleEnd = duration > 0 ? Math.min(duration, visibleStart + visibleSeconds) : 1;
-    const visibleDuration = Math.max(1, visibleEnd - visibleStart);
+    const visibleStart = time - halfWindow;
+    const visibleEnd = visibleStart + visibleSeconds;
+    const visibleDuration = visibleSeconds;
 
     const beatMarkers = [];
     if (beatDuration > 0) {
@@ -41,31 +37,27 @@ export default function SyncWavePanel({ deck, track, time = 0, duration = 0, onS
         }
     }
 
-    const visibleWaveformRaw =
-        duration > 0 && waveform.length > 0
-            ? waveform.slice(
-                  Math.max(0, Math.floor((visibleStart / duration) * waveform.length)),
-                  Math.min(waveform.length, Math.ceil((visibleEnd / duration) * waveform.length)),
-              )
-            : waveform;
-
     const maxVisibleBars = 260;
     const visibleWaveform =
-        visibleWaveformRaw.length > maxVisibleBars
+        duration > 0 && waveform.length > 0
             ? Array.from({ length: maxVisibleBars }, (_, index) => {
-                  const start = Math.floor((index / maxVisibleBars) * visibleWaveformRaw.length);
-                  const end = Math.max(start + 1, Math.floor(((index + 1) / maxVisibleBars) * visibleWaveformRaw.length));
-                  const values = visibleWaveformRaw.slice(start, end);
-                  return Math.max(...values);
-              })
-            : visibleWaveformRaw;
+                  const barStartTime = visibleStart + (index / maxVisibleBars) * visibleDuration;
+                  const barEndTime = visibleStart + ((index + 1) / maxVisibleBars) * visibleDuration;
 
-    const playheadPercent =
-        duration > visibleSeconds
-            ? Math.min(100, Math.max(0, ((time - visibleStart) / visibleDuration) * 100))
-            : duration > 0
-                ? Math.min(100, Math.max(0, (time / duration) * 100))
-                : 0;
+                  if (barEndTime < 0 || barStartTime > duration) return 0;
+
+                  const start = Math.max(0, Math.floor((Math.max(0, barStartTime) / duration) * waveform.length));
+                  const end = Math.min(
+                      waveform.length,
+                      Math.max(start + 1, Math.ceil((Math.min(duration, barEndTime) / duration) * waveform.length)),
+                  );
+
+                  const values = waveform.slice(start, end);
+                  return values.length > 0 ? Math.max(...values) : 0;
+              })
+            : waveform;
+
+    const playheadPercent = track ? 50 : 0;
 
     const sliderPercent = duration > 0 ? Math.min(100, Math.max(0, (time / duration) * 100)) : 0;
 
