@@ -26,9 +26,10 @@ export function buildDeckSyncPlan(input: DeckSyncInput): DeckSyncPlan | null {
     const targetTime = getClosestPhaseMatch({
         masterTime: input.masterTime,
         masterGridStart: input.masterGridStart,
+        masterBpm: input.masterBpm,
         slaveTime: input.slaveTime,
         slaveGridStart: input.slaveGridStart,
-        bpm: input.masterBpm,
+        slaveBpm: input.slaveBpm,
     });
 
     return {

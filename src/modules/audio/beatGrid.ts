@@ -38,31 +38,36 @@ export function getNextBarStart(input: {
 export function getClosestPhaseMatch(input: {
     masterTime: number;
     masterGridStart: number;
+    masterBpm: number;
     slaveTime: number;
     slaveGridStart: number;
-    bpm: number;
+    slaveBpm: number;
 }): number {
-    const bar = getBarDuration(input.bpm);
-    if (bar === 0) return input.slaveTime;
+    const masterBar = getBarDuration(input.masterBpm);
+    const slaveBar = getBarDuration(input.slaveBpm);
+    if (masterBar === 0 || slaveBar === 0) return input.slaveTime;
 
-    const masterPhase = getPhaseInBar({
+    const masterPhaseSeconds = getPhaseInBar({
         time: input.masterTime,
         gridStart: input.masterGridStart,
-        bpm: input.bpm,
+        bpm: input.masterBpm,
     });
 
-    const slaveBarIndex = Math.floor(
-        (input.slaveTime - input.slaveGridStart) / bar
+    // Anteil [0,1) im Master-Bar → gleicher Anteil im Slave-Bar
+    const masterFraction = masterPhaseSeconds / masterBar;
+    const slavePhaseTarget = masterFraction * slaveBar;
+
+    const slaveBarIndex = Math.round(
+        (input.slaveTime - input.slaveGridStart) / slaveBar
     );
 
     const candidates = [
-        input.slaveGridStart + (slaveBarIndex - 1) * bar + masterPhase,
-        input.slaveGridStart + slaveBarIndex * bar + masterPhase,
-        input.slaveGridStart + (slaveBarIndex + 1) * bar + masterPhase,
+        input.slaveGridStart + (slaveBarIndex - 1) * slaveBar + slavePhaseTarget,
+        input.slaveGridStart + slaveBarIndex * slaveBar + slavePhaseTarget,
+        input.slaveGridStart + (slaveBarIndex + 1) * slaveBar + slavePhaseTarget,
     ];
 
     let best = candidates[0];
-
     for (const c of candidates) {
         if (Math.abs(c - input.slaveTime) < Math.abs(best - input.slaveTime)) {
             best = c;

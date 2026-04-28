@@ -178,7 +178,7 @@ function App() {
           isActive={activeDeck === "A"}
           onActivate={() => setActiveDeck("A")}
           onPlay={() => { }}
-          syncMasterBpm={activeDeck === "B" ? deckBTrack?.bpm ?? null : null}
+          syncMasterBpm={activeDeck === "B" ? (deckBTrack?.analysis?.detectedBpm ?? deckBTrack?.bpm) || null : null}
           syncMasterTrack={activeDeck === "B" ? deckBTrack : undefined}
           syncMasterTime={activeDeck === "B" ? deckBTime.time : 0}
           onTimeUpdateGlobal={(time, duration) => setDeckATime({ time, duration })}
@@ -207,7 +207,7 @@ function App() {
           isActive={activeDeck === "B"}
           onActivate={() => setActiveDeck("B")}
           onPlay={() => { }}
-          syncMasterBpm={activeDeck === "A" ? deckATrack?.bpm ?? null : null}
+          syncMasterBpm={activeDeck === "A" ? (deckATrack?.analysis?.detectedBpm ?? deckATrack?.bpm) || null : null}
           syncMasterTrack={activeDeck === "A" ? deckATrack : undefined}
           syncMasterTime={activeDeck === "A" ? deckATime.time : 0}
           onTimeUpdateGlobal={(time, duration) => setDeckBTime({ time, duration })}
