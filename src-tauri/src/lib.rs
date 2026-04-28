@@ -393,8 +393,38 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             analyze_audio_file,
-            read_mp3_tags
+            read_mp3_tags,
+            test_rubberband_stretch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+use std::process::Command;
+
+#[tauri::command]
+fn test_rubberband_stretch(
+    input_path: String,
+    output_path: String,
+    tempo: f32,
+) -> Result<String, String> {
+    let tempo_arg = format!("{}", tempo);
+
+    let output = Command::new("rubberband")
+        .arg("-T")
+        .arg(tempo_arg)
+        .arg(&input_path)
+        .arg(&output_path)
+        .output()
+        .map_err(|e| format!("Fehler beim Starten von Rubber Band: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Rubber Band Fehler: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(format!("Fertig: {}", output_path))
+}
+
