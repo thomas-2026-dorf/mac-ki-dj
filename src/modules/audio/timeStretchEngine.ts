@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { exists } from "@tauri-apps/plugin-fs";
 
 function getFolderPath(filePath: string) {
     return filePath.split("/").slice(0, -1).join("/");
@@ -22,6 +21,10 @@ export function getTkdjCachePaths(inputPath: string) {
     };
 }
 
+async function fileExists(path: string) {
+    return await invoke<boolean>("tkdj_file_exists", { path });
+}
+
 export async function convertToWav(inputPath: string, outputPath: string) {
     return await invoke<string>("convert_audio_to_wav", {
         inputPath,
@@ -32,7 +35,7 @@ export async function convertToWav(inputPath: string, outputPath: string) {
 export async function ensureWavCache(inputPath: string) {
     const paths = getTkdjCachePaths(inputPath);
 
-    if (!(await exists(paths.wavPath))) {
+    if (!(await fileExists(paths.wavPath))) {
         console.log("WAV Cache fehlt, erstelle:", paths.wavPath);
         await convertToWav(inputPath, paths.wavPath);
     } else {
@@ -62,7 +65,7 @@ export async function convertAndStretch(options: {
         const paths = getTkdjCachePaths(options.inputMp3);
 
         const wavPath = await ensureWavCache(options.inputMp3);
-        const stretchExists = await exists(paths.stretchedPath);
+        const stretchExists = await fileExists(paths.stretchedPath);
 
         if (!stretchExists) {
             console.log("Step 2: Stretch");

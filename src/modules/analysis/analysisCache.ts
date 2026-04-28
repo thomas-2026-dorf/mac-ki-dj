@@ -1,4 +1,5 @@
-import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
+
 import { getTkdjCachePaths } from "../audio/timeStretchEngine";
 import type { AudioAnalysisResult } from "./types";
 
@@ -12,21 +13,28 @@ export function getAnalysisCachePath(inputPath: string) {
     return `${paths.cacheFolder}/${baseName}.analysis.json`;
 }
 
+async function fileExists(path: string) {
+    return await invoke<boolean>("tkdj_file_exists", { path });
+}
+
 export async function loadAnalysisCache(inputPath: string) {
     const analysisPath = getAnalysisCachePath(inputPath);
 
-    if (!(await exists(analysisPath))) {
+    if (!(await fileExists(analysisPath))) {
         return null;
     }
 
-    const raw = await readTextFile(analysisPath);
+    const raw = await invoke<string>("tkdj_read_text_file", { path: analysisPath });
     return JSON.parse(raw) as AudioAnalysisResult;
 }
 
 export async function saveAnalysisCache(inputPath: string, analysis: AudioAnalysisResult) {
     const analysisPath = getAnalysisCachePath(inputPath);
 
-    await writeTextFile(analysisPath, JSON.stringify(analysis, null, 2));
+    await invoke<string>("tkdj_write_text_file", {
+        path: analysisPath,
+        content: JSON.stringify(analysis, null, 2),
+    });
 
     return analysisPath;
 }
