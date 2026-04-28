@@ -418,6 +418,36 @@ fn convert_audio_to_wav(
     Ok(format!("WAV fertig: {}", output_path))
 }
 
+
+
+#[tauri::command]
+fn tkdj_file_exists(path: String) -> Result<bool, String> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
+#[tauri::command]
+fn tkdj_read_binary_file(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("Datei konnte nicht gelesen werden: {}", e))
+}
+
+#[tauri::command]
+fn tkdj_read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Textdatei konnte nicht gelesen werden: {}", e))
+}
+
+#[tauri::command]
+fn tkdj_write_text_file(path: String, content: String) -> Result<String, String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Ordner konnte nicht erstellt werden: {}", e))?;
+    }
+
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Textdatei konnte nicht geschrieben werden: {}", e))?;
+
+    Ok(path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -429,7 +459,11 @@ pub fn run() {
             analyze_audio_file,
             read_mp3_tags,
             test_rubberband_stretch,
-            convert_audio_to_wav
+            convert_audio_to_wav,
+            tkdj_file_exists,
+            tkdj_read_binary_file,
+            tkdj_read_text_file,
+            tkdj_write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

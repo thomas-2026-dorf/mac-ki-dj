@@ -1,21 +1,16 @@
 {
   "identifier": "default",
-  "description": "TK-DJ FS Zugriff",
+  "description": "TK-DJ Zugriff",
   "windows": ["main"],
   "permissions": [
-    "core:default",
     "opener:default",
-    "dialog:default",
 
-    "fs:scope-home-recursive",
+    "fs:scope-desktop-recursive",
+    "fs:allow-desktop-meta-recursive",
+    "fs:allow-desktop-read-recursive",
+    "fs:allow-desktop-write-recursive",
 
-    "fs:allow-home-read-recursive",
-    "fs:allow-home-write-recursive",
-
-    "fs:allow-exists",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-read-dir",
-    "fs:allow-create-dir"
+    "fs:write-all",
+    "fs:write-files"
   ]
 }

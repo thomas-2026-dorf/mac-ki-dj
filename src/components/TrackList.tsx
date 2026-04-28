@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { demoTracks } from "../data/demoTracks";
 import { calculateTransitionScore } from "../modules/transition/transitionScore";
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
+import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
 import type { Track } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
@@ -100,6 +101,7 @@ export default function TrackList({
 
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [editFields, setEditFields] = useState<EditFields | null>(null);
+    const [analysisDebugMessage, setAnalysisDebugMessage] = useState<string>("");
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -307,6 +309,46 @@ export default function TrackList({
                     {selectedTrack ? `Bearbeiten: ${selectedTrack.title}` : "Kein Song ausgewählt"}
                 </strong>
 
+                {selectedTrack && (
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            setAnalysisDebugMessage("Analyse gestartet...");
+
+                            if (!selectedTrack.url) {
+                                setAnalysisDebugMessage("Kein Datei-Pfad vorhanden.");
+                                return;
+                            }
+
+                            const stretchResult = await convertAndStretch({
+                                inputMp3: selectedTrack.url,
+                                tempo: 0.95,
+                            });
+
+                            if (!stretchResult.success) {
+                                setAnalysisDebugMessage("Stretch Fehler: " + stretchResult.error);
+                                return;
+                            }
+
+                            const analysisResult = await prepareTrackAnalysis(selectedTrack.url);
+
+                            if (analysisResult.success) {
+                                setAnalysisDebugMessage(analysisResult.cached ? "Analyse aus Cache geladen" : "Analyse neu berechnet");
+                            } else {
+                                setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
+                            }
+                        }}
+                    >
+                        Analyse Debug testen
+                    </button>
+                )}
+
+                {analysisDebugMessage && (
+                    <div style={{ marginTop: "8px", color: "#86efac", fontWeight: "bold" }}>
+                        {analysisDebugMessage}
+                    </div>
+                )}
+
                 {editFields && (
                     <>
                         <label>
@@ -451,20 +493,33 @@ export default function TrackList({
                             </button>
                             <strong>{track.title}</strong>
                             <button
-                                onClick={async (e) => {
+                                onMouseDown={async (e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
+                                    alert("Debug Start: Blitz wurde gedrückt");
 
                                     if (!track.url) {
                                         alert("Kein Datei-Pfad vorhanden. Bitte echten Musikordner laden.");
                                         return;
                                     }
 
-                                    const result = await convertAndStretch({
+                                    const stretchResult = await convertAndStretch({
                                         inputMp3: track.url,
                                         tempo: 0.95,
                                     });
 
-                                    alert(result.success ? "Stretch fertig!" : "Fehler: " + result.error);
+                                    if (!stretchResult.success) {
+                                        alert("Stretch Fehler: " + stretchResult.error);
+                                        return;
+                                    }
+
+                                    const analysisResult = await prepareTrackAnalysis(track.url);
+
+                                    if (analysisResult.success) {
+                                        setAnalysisDebugMessage(analysisResult.cached ? "Analyse aus Cache geladen" : "Analyse neu berechnet");
+                                    } else {
+                                        setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
+                                    }
                                 }}
                                 style={{
                                     marginLeft: "6px",
@@ -477,7 +532,7 @@ export default function TrackList({
                                 }}
                                 title="MP3 → WAV → Stretch testen"
                             >
-                                ⚡
+                                ⚡ DEBUG
                             </button>
                         </div>
 

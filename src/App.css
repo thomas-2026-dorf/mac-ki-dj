@@ -1158,3 +1158,12 @@ body {
   position: relative !important;
   z-index: 5 !important;
 }
+
+.sync-waves {
+  pointer-events: none;
+}
+
+.sync-waves * {
+  pointer-events: none;
+}
+
