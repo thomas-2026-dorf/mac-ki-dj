@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Track } from "../types/track";
+import { buildDeckSyncPlan } from "../modules/audio/syncEngine";
+import { getAudioTime, resumeSharedAudioContext } from "../modules/audio/audioContext";
 
 type DeckProps = {
     syncMasterBpm?: number | null;
@@ -47,6 +49,7 @@ export default function Deck({
     const [duration, setDuration] = useState(0);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [pitchPercent, setPitchPercent] = useState(0);
+    const [lastSyncDebug, setLastSyncDebug] = useState<string>("");
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const waveformRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +187,7 @@ export default function Deck({
         }
 
         try {
+            await resumeSharedAudioContext();
             await audioRef.current.play();
             setIsPlaying(true);
             onPlay?.();
@@ -194,62 +198,42 @@ export default function Deck({
     }
 
     function handleTempoSync() {
-        if (!audioRef.current || !track || !syncMasterBpm || !syncMasterTrack) return;
+        if (!audioRef.current || !track || !syncMasterTrack) return;
 
-        const slaveOriginalBpm = track.bpm ?? 0;
         const masterBpm = syncMasterBpm ?? 0;
+        const slaveBpm = track.bpm ?? 0;
 
-        if (slaveOriginalBpm <= 0 || masterBpm <= 0) return;
+        const plan = buildDeckSyncPlan({
+            masterTime: syncMasterTime,
+            masterBpm,
+            masterGridStart: syncMasterTrack.analysis?.beatGridStartSeconds ?? 0,
+            slaveTime: audioRef.current.currentTime,
+            slaveBpm,
+            slaveGridStart: beatGridStart,
+        });
 
-        // 1. Tempo angleichen
-        const nextPitch = (masterBpm / slaveOriginalBpm - 1) * 100;
-        const limitedPitch = Math.max(-8, Math.min(8, nextPitch));
-        const playbackRate = 1 + limitedPitch / 100;
+        if (!plan) return;
+
+        const limitedPitch = Math.max(-8, Math.min(8, plan.pitchPercent));
+        const limitedPlaybackRate = 1 + limitedPitch / 100;
 
         setPitchPercent(limitedPitch);
-        audioRef.current.playbackRate = playbackRate;
+        audioRef.current.playbackRate = limitedPlaybackRate;
+        audioRef.current.currentTime = Math.max(0, plan.targetTime);
 
-        // 2. 4er-Phase angleichen: 1-2-3-4 auf 1-2-3-4
-        const masterBeatSeconds = 60 / masterBpm;
-        const barSeconds = masterBeatSeconds * 4;
+        setCurrentTime(audioRef.current.currentTime);
+        onTimeUpdateGlobal?.(audioRef.current.currentTime, duration);
 
-        const masterGridStart = syncMasterTrack.analysis?.beatGridStartSeconds ?? 0;
-        const slaveGridStart = track.analysis?.beatGridStartSeconds ?? 0;
+        const debugText =
+            `master ${syncMasterTime.toFixed(3)} | slave ${(audioRef.current.currentTime).toFixed(3)} | target ${plan.targetTime.toFixed(3)} | rate ${limitedPlaybackRate.toFixed(4)}`;
 
-        const masterPositionInBar =
-            ((syncMasterTime - masterGridStart) % barSeconds + barSeconds) % barSeconds;
-
-        const slaveNow = audioRef.current.currentTime;
-        const slaveCurrentBarIndex = Math.floor((slaveNow - slaveGridStart) / barSeconds);
-
-        const candidateTimes = [
-            slaveGridStart + (slaveCurrentBarIndex - 1) * barSeconds + masterPositionInBar,
-            slaveGridStart + slaveCurrentBarIndex * barSeconds + masterPositionInBar,
-            slaveGridStart + (slaveCurrentBarIndex + 1) * barSeconds + masterPositionInBar,
-        ].filter((value) => value >= 0);
-
-        const targetTime = candidateTimes.reduce((best, value) =>
-            Math.abs(value - slaveNow) < Math.abs(best - slaveNow) ? value : best,
-        );
-
-        const sameTrack =
-            syncMasterTrack.id === track.id ||
-            syncMasterTrack.title === track.title;
-
-        const syncCorrectionSeconds = 0.10;
-        const finalTargetTime = sameTrack ? syncMasterTime + syncCorrectionSeconds : targetTime + syncCorrectionSeconds;
-
-        audioRef.current.currentTime = finalTargetTime;
-        setCurrentTime(finalTargetTime);
-        onTimeUpdateGlobal?.(finalTargetTime, duration);
-
-        console.log("SYNC PHASE", {
+        setLastSyncDebug(debugText);
+        console.log("SYNC ENGINE PLAN", {
+            plan,
             masterTime: syncMasterTime,
-            slaveBefore: slaveNow,
-            slaveAfter: targetTime,
-            masterPositionInBar,
-            pitch: limitedPitch,
-            playbackRate,
+            slaveAfter: audioRef.current.currentTime,
+            audioClockTime: getAudioTime(),
+            debugText,
         });
     }
 
@@ -442,6 +426,12 @@ export default function Deck({
             <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px" }}>
                 Beats: {track?.analysis?.beats?.length ?? 0} |
                 GridStart: {track?.analysis?.beatGridStartSeconds ?? "-"}
+                {lastSyncDebug && (
+                    <>
+                        <br />
+                        Sync: {lastSyncDebug}
+                    </>
+                )}
             </div>
 
             <div className="deck-info">
