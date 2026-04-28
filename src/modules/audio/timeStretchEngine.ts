@@ -1,5 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
 
+function getFolderPath(filePath: string) {
+    return filePath.split("/").slice(0, -1).join("/");
+}
+
+function getFileNameWithoutExtension(filePath: string) {
+    const fileName = filePath.split("/").pop() || "track";
+    return fileName.replace(/\.[^/.]+$/, "");
+}
+
+function getTkdjCachePaths(inputPath: string) {
+    const folder = getFolderPath(inputPath);
+    const baseName = getFileNameWithoutExtension(inputPath);
+    const cacheFolder = `${folder}/.tkdj`;
+
+    return {
+        cacheFolder,
+        wavPath: `${cacheFolder}/${baseName}.wav`,
+        stretchedPath: `${cacheFolder}/${baseName}_stretch.wav`,
+    };
+}
+
 export async function convertToWav(inputPath: string, outputPath: string) {
     return await invoke<string>("convert_audio_to_wav", {
         inputPath,
@@ -19,25 +40,29 @@ export async function stretchAudioFile(options: {
     });
 }
 
-// 🔥 Komplett-Test: MP3 → WAV → Stretch
 export async function convertAndStretch(options: {
     inputMp3: string;
-    wavPath: string;
-    stretchedPath: string;
     tempo: number;
 }) {
     try {
+        const paths = getTkdjCachePaths(options.inputMp3);
+
+        console.log("Cache:", paths.cacheFolder);
         console.log("Step 1: MP3 → WAV");
-        await convertToWav(options.inputMp3, options.wavPath);
+        await convertToWav(options.inputMp3, paths.wavPath);
 
         console.log("Step 2: Stretch");
         await stretchAudioFile({
-            inputPath: options.wavPath,
-            outputPath: options.stretchedPath,
+            inputPath: paths.wavPath,
+            outputPath: paths.stretchedPath,
             tempo: options.tempo,
         });
 
-        return { success: true };
+        return {
+            success: true,
+            wavPath: paths.wavPath,
+            stretchedPath: paths.stretchedPath,
+        };
     } catch (e) {
         console.error(e);
         return { success: false, error: String(e) };

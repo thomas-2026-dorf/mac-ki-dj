@@ -459,14 +459,8 @@ export default function TrackList({
                                         return;
                                     }
 
-                                    const base = track.url.replace(".mp3", "");
-                                    const wavPath = base + ".wav";
-                                    const stretchedPath = base + "_stretch.wav";
-
                                     const result = await convertAndStretch({
                                         inputMp3: track.url,
-                                        wavPath,
-                                        stretchedPath,
                                         tempo: 0.95,
                                     });
 

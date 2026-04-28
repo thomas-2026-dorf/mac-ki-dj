@@ -391,6 +391,11 @@ fn convert_audio_to_wav(
     input_path: String,
     output_path: String,
 ) -> Result<String, String> {
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Fehler beim Erstellen des Ausgabeordners: {}", e))?;
+    }
+
     let output = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
