@@ -10,7 +10,7 @@ function getFileNameWithoutExtension(filePath: string) {
     return fileName.replace(/\.[^/.]+$/, "");
 }
 
-function getTkdjCachePaths(inputPath: string) {
+export function getTkdjCachePaths(inputPath: string) {
     const folder = getFolderPath(inputPath);
     const baseName = getFileNameWithoutExtension(inputPath);
     const cacheFolder = `${folder}/.tkdj`;
