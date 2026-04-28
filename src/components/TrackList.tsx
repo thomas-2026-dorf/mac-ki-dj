@@ -344,8 +344,15 @@ export default function TrackList({
                 )}
 
                 {analysisDebugMessage && (
-                    <div style={{ marginTop: "8px", color: "#86efac", fontWeight: "bold" }}>
+                    <div style={{ marginTop: "8px", color: "#86efac", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
                         {analysisDebugMessage}
+                        <button
+                            type="button"
+                            onClick={() => setAnalysisDebugMessage("")}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "12px", padding: "0" }}
+                        >
+                            ✕
+                        </button>
                     </div>
                 )}
 
@@ -493,30 +500,45 @@ export default function TrackList({
                             </button>
                             <strong>{track.title}</strong>
                             <button
-                                onMouseDown={async (e) => {
-                                    e.preventDefault();
+                                onClick={async (e) => {
                                     e.stopPropagation();
-                                    alert("Debug Start: Blitz wurde gedrückt");
 
                                     if (!track.url) {
-                                        alert("Kein Datei-Pfad vorhanden. Bitte echten Musikordner laden.");
+                                        setAnalysisDebugMessage("Kein Datei-Pfad vorhanden.");
                                         return;
                                     }
 
-                                    const stretchResult = await convertAndStretch({
-                                        inputMp3: track.url,
-                                        tempo: 0.95,
-                                    });
-
-                                    if (!stretchResult.success) {
-                                        alert("Stretch Fehler: " + stretchResult.error);
-                                        return;
-                                    }
-
+                                    setAnalysisDebugMessage("Analyse gestartet...");
                                     const analysisResult = await prepareTrackAnalysis(track.url);
 
-                                    if (analysisResult.success) {
-                                        setAnalysisDebugMessage(analysisResult.cached ? "Analyse aus Cache geladen" : "Analyse neu berechnet");
+                                    if (analysisResult.success && analysisResult.analysis) {
+                                        const a = analysisResult.analysis;
+                                        const updatedTrack: Track = {
+                                            ...track,
+                                            bpm: a.bpm ? Math.round(a.bpm) : track.bpm,
+                                            key: a.camelotKey || a.key || track.key,
+                                            energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
+                                            analysis: {
+                                                ...(track.analysis ?? { cuePoints: [], loops: [] }),
+                                                status: "done",
+                                                waveform: a.waveform,
+                                                detectedBpm: a.bpm ?? undefined,
+                                                bpmConfidence: a.bpmConfidence,
+                                                bpmSource: "auto",
+                                                cuePoints: track.analysis?.cuePoints ?? [],
+                                                loops: track.analysis?.loops ?? [],
+                                            },
+                                        };
+                                        const updatedTracks = tracks.map((t) =>
+                                            t.id === updatedTrack.id ? updatedTrack : t
+                                        );
+                                        setTracks(updatedTracks);
+                                        saveLibrary(updatedTracks, musicFolder);
+                                        onTrackUpdated?.(updatedTrack);
+                                        setAnalysisDebugMessage(
+                                            (analysisResult.cached ? "Cache: " : "Neu: ") +
+                                            `BPM ${updatedTrack.bpm} · Key ${updatedTrack.key} · Energy ${updatedTrack.energy}`
+                                        );
                                     } else {
                                         setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
                                     }
@@ -530,9 +552,9 @@ export default function TrackList({
                                     padding: "2px 6px",
                                     color: "#86efac"
                                 }}
-                                title="MP3 → WAV → Stretch testen"
+                                title="Track analysieren"
                             >
-                                ⚡ DEBUG
+                                ⚡
                             </button>
                         </div>
 

@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Track } from "../types/track";
 import { buildDeckSyncPlan } from "../modules/audio/syncEngine";
 import { getAudioTime, resumeSharedAudioContext } from "../modules/audio/audioContext";
+import DeckWaveform from "./DeckWaveform";
 
 type DeckProps = {
     syncMasterBpm?: number | null;
@@ -47,12 +48,9 @@ export default function Deck({
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [isScrubbing, setIsScrubbing] = useState(false);
     const [pitchPercent, setPitchPercent] = useState(0);
-    const [lastSyncDebug, setLastSyncDebug] = useState<string>("");
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const waveformRef = useRef<HTMLDivElement | null>(null);
 
     const waveform = track?.analysis?.waveform ?? [];
     const cuePoints = track?.analysis?.cuePoints ?? [];
@@ -67,10 +65,10 @@ export default function Deck({
         cuePoints.find((cuePoint) => cuePoint.type === "drum" || cuePoint.type === "start")?.timeSeconds ??
         0;
 
-    const visibleSeconds = 24;
+    const visibleSeconds = 16;
     const visibleStart =
         duration > visibleSeconds
-            ? Math.min(Math.max(0, currentTime - visibleSeconds * 0.25), duration - visibleSeconds)
+            ? Math.min(Math.max(0, currentTime - visibleSeconds * 0.35), duration - visibleSeconds)
             : 0;
     const visibleEnd = duration > 0 ? Math.min(duration, visibleStart + visibleSeconds) : 0;
     const visibleDuration = Math.max(1, visibleEnd - visibleStart);
@@ -83,7 +81,7 @@ export default function Deck({
               )
             : waveform;
 
-    const maxVisibleBars = 180;
+    const maxVisibleBars = 400;
     const visibleWaveform =
         visibleWaveformRaw.length > maxVisibleBars
             ? Array.from({ length: maxVisibleBars }, (_, index) => {
@@ -224,16 +222,11 @@ export default function Deck({
         setCurrentTime(audioRef.current.currentTime);
         onTimeUpdateGlobal?.(audioRef.current.currentTime, duration);
 
-        const debugText =
-            `master ${syncMasterTime.toFixed(3)} | slave ${(audioRef.current.currentTime).toFixed(3)} | target ${plan.targetTime.toFixed(3)} | rate ${limitedPlaybackRate.toFixed(4)}`;
-
-        setLastSyncDebug(debugText);
         console.log("SYNC ENGINE PLAN", {
             plan,
             masterTime: syncMasterTime,
             slaveAfter: audioRef.current.currentTime,
             audioClockTime: getAudioTime(),
-            debugText,
         });
     }
 
@@ -247,10 +240,9 @@ export default function Deck({
         setCurrentTime(0);
     }
 
-    function seekToPosition(clientX: number) {
-        if (!audioRef.current || !track || duration <= 0 || !waveformRef.current) return;
+    function seekToPosition(clientX: number, rect: DOMRect) {
+        if (!audioRef.current || !track || duration <= 0) return;
 
-        const rect = waveformRef.current.getBoundingClientRect();
         const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
         const nextTime = Math.min(duration, Math.max(0, visibleStart + ratio * visibleDuration));
 
@@ -292,163 +284,33 @@ export default function Deck({
             </div>
 
             <div className="waveform">
-                {track ? (
-                    <>
-                        <div className="deck-waveform-container">
-                            <div className="deck-beat-grid">
-                                {beatMarkers.map((marker) => (
-                                    <div
-                                        key={`beat-${marker.time}`}
-                                        className={`deck-beat-marker beat-${marker.beat}`}
-                                        style={{ left: `${marker.percent}%` }}
-                                        title={`Beat ${marker.beat} · ${formatTime(marker.time)}`}
-                                    >
-                                        {marker.beat === 1 ? "1" : ""}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div
-                                ref={waveformRef}
-                                className="deck-beatgrid-stage"
-                                onMouseDown={(event) => {
-                                    setIsScrubbing(true);
-                                    seekToPosition(event.clientX);
-                                }}
-                                onMouseMove={(event) => {
-                                    if (isScrubbing) seekToPosition(event.clientX);
-                                }}
-                                onMouseUp={() => setIsScrubbing(false)}
-                                onMouseLeave={() => setIsScrubbing(false)}
-                            >
-                                <div className="deck-mini-waveform">
-                                {visibleWaveform.length > 0 ? (
-                                    visibleWaveform.map((value, index) => (
-                                        <div
-                                            key={`${track.id}-wave-${index}`}
-                                            className={
-                                                "deck-waveform-bar " +
-                                                (value > 0.22
-                                                    ? "wave-hot"
-                                                    : value > 0.12
-                                                        ? "wave-mid"
-                                                        : "wave-low")
-                                            }
-                                            style={{
-                                                height: `${Math.max(10, Math.min(100, value * 420))}%`,
-                                            }}
-                                        />
-                                    ))
-                                ) : (
-                                    <div className="deck-waveform-empty">
-                                        Waveform noch nicht analysiert
-                                    </div>
-                                )}
-                                </div>
-
-                                {cuePoints.map((cuePoint) => {
-                                    const markerLeft =
-                                        cuePoint.timeSeconds >= visibleStart &&
-                                        cuePoint.timeSeconds <= visibleEnd
-                                            ? Math.min(
-                                                  100,
-                                                  Math.max(
-                                                      0,
-                                                      ((cuePoint.timeSeconds - visibleStart) / visibleDuration) * 100,
-                                                  ),
-                                              )
-                                            : -1;
-
-                                    if (markerLeft < 0) return null;
-
-                                    return (
-                                        <div
-                                            key={cuePoint.id}
-                                            className={`deck-cue-marker deck-cue-${cuePoint.type}`}
-                                            style={{ left: `${markerLeft}%` }}
-                                            title={`${cuePoint.name} · ${formatTime(cuePoint.timeSeconds)}`}
-                                        />
-                                    );
-                                })}
-
-                                <div
-                                    className="deck-waveform-playhead"
-                                    style={{ left: `${progressPercent}%` }}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="deck-time">
-                            <span>{formatTime(currentTime)}</span>
-                            <span>Zoom {formatTime(visibleStart)} - {formatTime(visibleEnd)}</span>
-                            <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
-                        </div>
-
-
-
-                        {cuePoints.length > 0 && (
-                            <div className="deck-cue-list">
-                                {cuePoints.map((cuePoint) => (
-                                    <span
-                                        key={`${cuePoint.id}-label`}
-                                        className={`deck-cue-label deck-cue-${cuePoint.type}`}
-                                    >
-                                        {cuePoint.name} · {formatTime(cuePoint.timeSeconds)}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <span>Kein Track</span>
-                )}
-            </div>
-
-            {track && (
-                <input
-                    type="range"
-                    className="deck-song-position"
-                    min="0"
-                    max={duration || 0}
-                    step="0.1"
-                    value={currentTime}
-                    onChange={(event) => {
-                        const nextTime = Number(event.target.value);
-                        if (audioRef.current) {
-                            audioRef.current.currentTime = nextTime;
-                        }
-                        setCurrentTime(nextTime);
-                    }}
+                <DeckWaveform
+                    waveform={visibleWaveform}
+                    beatMarkers={beatMarkers}
+                    cuePoints={cuePoints}
+                    currentTime={currentTime}
+                    visibleStart={visibleStart}
+                    visibleDuration={visibleDuration}
+                    progressPercent={progressPercent}
+                    onSeek={seekToPosition}
                 />
-            )}
-
-
-            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px" }}>
-                Beats: {track?.analysis?.beats?.length ?? 0} |
-                GridStart: {track?.analysis?.beatGridStartSeconds ?? "-"}
-                {lastSyncDebug && (
-                    <>
-                        <br />
-                        Sync: {lastSyncDebug}
-                    </>
-                )}
+                <div className="deck-time">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+                </div>
             </div>
 
             <div className="deck-info">
-                <div>
-                    BPM: {track ? pitchedBpm.toFixed(1) : "-"}
-                    {track && pitchPercent !== 0 ? ` (${originalBpm} / ${pitchPercent > 0 ? "+" : ""}${pitchPercent.toFixed(1)}%)` : ""}
+                <div className="deck-bpm">
+                    {track ? pitchedBpm.toFixed(1) : "---"}
+                    <span className="deck-bpm-label">BPM{pitchPercent !== 0 ? ` ${pitchPercent > 0 ? "+" : ""}${pitchPercent.toFixed(1)}%` : ""}</span>
                 </div>
-                <div>Key: {track ? track.key : "-"}</div>
-                <div>Energy: {track ? track.energy : "-"}</div>
+                <div className="deck-key">{track ? (track.key || "-") : "-"}</div>
+                <div className="deck-energy">{track ? (track.energy || "-") : "-"}<span className="deck-bpm-label">NRG</span></div>
             </div>
 
-            
-
             {track && (
-                <div className="deck-track-title">
-                    {track.title} · Waveform: {waveform.length}
-                </div>
+                <div className="deck-track-title">{track.title}</div>
             )}
 
             <div className="deck-controls" style={{ marginTop: "auto" }}>

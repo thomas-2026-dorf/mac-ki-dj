@@ -1167,3 +1167,152 @@ body {
   pointer-events: none;
 }
 
+/* ===== DJ WAVEFORM (Serato-Stil) ===== */
+
+.dj-waveform-outer {
+  position: relative;
+  height: 140px;
+  background: #04090f;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #0f2030;
+  margin: 8px 0;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.6);
+}
+
+/* Horizontale Mittellinie */
+.dj-center-line {
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.dj-beat-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.dj-beat-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.beat-1 { background: rgba(255,255,255,0.45); }
+.beat-2 { background: rgba(255,255,255,0.10); }
+.beat-3 { background: rgba(255,255,255,0.10); }
+.beat-4 { background: rgba(255,255,255,0.10); }
+
+.dj-beat-one {
+  position: absolute;
+  top: 3px;
+  left: 2px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.5);
+  pointer-events: none;
+}
+
+.dj-waveform-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5px;
+  padding: 0 2px;
+  cursor: crosshair;
+  z-index: 3;
+}
+
+.dj-bar {
+  flex: 1;
+  min-width: 0.5px;
+  max-width: 2px;
+  border-radius: 0;
+}
+
+/* Ungespielt — blau kalt */
+.bar-hot  { background: #1e90ff; }
+.bar-mid  { background: #0f4a8a; }
+.bar-low  { background: #071e38; }
+
+/* Gespielt — warm orange/gelb wie Serato */
+.bar-played-hot { background: #ff9500; }
+.bar-played-mid { background: #c45f00; }
+.bar-played-low { background: #4a2200; }
+
+.dj-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255,255,255,1), 0 0 3px rgba(255,255,255,0.8);
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.dj-cue-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #facc15;
+  z-index: 8;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(250,204,21,0.8);
+}
+
+.dj-waveform-empty {
+  width: 100%;
+  text-align: center;
+  color: #1e3a5a;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* BPM / Key / Energy — größer und deutlicher */
+.deck-bpm {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #38bdf8;
+  line-height: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.deck-key {
+  font-size: 22px;
+  font-weight: 700;
+  color: #a78bfa;
+  text-align: center;
+}
+
+.deck-energy {
+  font-size: 22px;
+  font-weight: 700;
+  color: #34d399;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.deck-bpm-label {
+  font-size: 9px;
+  font-weight: 400;
+  color: #64748b;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
