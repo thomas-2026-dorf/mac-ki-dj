@@ -3,13 +3,23 @@
   "description": "TK-DJ Zugriff",
   "windows": ["main"],
   "permissions": [
+    "core:default",
     "opener:default",
 
+    "dialog:allow-open",
+    "dialog:allow-save",
+
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:scope-home-recursive",
     "fs:scope-desktop-recursive",
     "fs:allow-desktop-meta-recursive",
     "fs:allow-desktop-read-recursive",
     "fs:allow-desktop-write-recursive",
-
     "fs:write-all",
     "fs:write-files"
   ]
