@@ -384,6 +384,35 @@ fn chrono_like_now() -> String {
     format!("unix-{}", seconds)
 }
 
+
+
+#[tauri::command]
+fn convert_audio_to_wav(
+    input_path: String,
+    output_path: String,
+) -> Result<String, String> {
+    let output = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(&input_path)
+        .arg("-ar")
+        .arg("44100")
+        .arg("-ac")
+        .arg("2")
+        .arg(&output_path)
+        .output()
+        .map_err(|e| format!("Fehler beim Starten von ffmpeg: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "ffmpeg Fehler: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(format!("WAV fertig: {}", output_path))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -394,7 +423,8 @@ pub fn run() {
             greet,
             analyze_audio_file,
             read_mp3_tags,
-            test_rubberband_stretch
+            test_rubberband_stretch,
+            convert_audio_to_wav
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
