@@ -29,6 +29,19 @@ export async function convertToWav(inputPath: string, outputPath: string) {
     });
 }
 
+export async function ensureWavCache(inputPath: string) {
+    const paths = getTkdjCachePaths(inputPath);
+
+    if (!(await exists(paths.wavPath))) {
+        console.log("WAV Cache fehlt, erstelle:", paths.wavPath);
+        await convertToWav(inputPath, paths.wavPath);
+    } else {
+        console.log("WAV Cache vorhanden:", paths.wavPath);
+    }
+
+    return paths.wavPath;
+}
+
 export async function stretchAudioFile(options: {
     inputPath: string;
     outputPath: string;
@@ -48,20 +61,13 @@ export async function convertAndStretch(options: {
     try {
         const paths = getTkdjCachePaths(options.inputMp3);
 
-        const wavExists = await exists(paths.wavPath);
+        const wavPath = await ensureWavCache(options.inputMp3);
         const stretchExists = await exists(paths.stretchedPath);
-
-        if (!wavExists) {
-            console.log("Step 1: MP3 → WAV");
-            await convertToWav(options.inputMp3, paths.wavPath);
-        } else {
-            console.log("WAV Cache vorhanden:", paths.wavPath);
-        }
 
         if (!stretchExists) {
             console.log("Step 2: Stretch");
             await stretchAudioFile({
-                inputPath: paths.wavPath,
+                inputPath: wavPath,
                 outputPath: paths.stretchedPath,
                 tempo: options.tempo,
             });
@@ -71,7 +77,7 @@ export async function convertAndStretch(options: {
 
         return {
             success: true,
-            wavPath: paths.wavPath,
+            wavPath,
             stretchedPath: paths.stretchedPath,
         };
     } catch (e) {
