@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { demoTracks } from "../data/demoTracks";
 import { calculateTransitionScore } from "../modules/transition/transitionScore";
+import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import type { Track } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
@@ -449,6 +450,41 @@ export default function TrackList({
                                 ✏️
                             </button>
                             <strong>{track.title}</strong>
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+
+                                    if (!track.url) {
+                                        alert("Kein Datei-Pfad vorhanden. Bitte echten Musikordner laden.");
+                                        return;
+                                    }
+
+                                    const base = track.url.replace(".mp3", "");
+                                    const wavPath = base + ".wav";
+                                    const stretchedPath = base + "_stretch.wav";
+
+                                    const result = await convertAndStretch({
+                                        inputMp3: track.url,
+                                        wavPath,
+                                        stretchedPath,
+                                        tempo: 0.95,
+                                    });
+
+                                    alert(result.success ? "Stretch fertig!" : "Fehler: " + result.error);
+                                }}
+                                style={{
+                                    marginLeft: "6px",
+                                    background: "rgba(34,197,94,0.2)",
+                                    border: "1px solid rgba(34,197,94,0.5)",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                    padding: "2px 6px",
+                                    color: "#86efac"
+                                }}
+                                title="MP3 → WAV → Stretch testen"
+                            >
+                                ⚡
+                            </button>
                         </div>
 
                         <span>{track.artist}</span>
