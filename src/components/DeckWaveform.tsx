@@ -49,8 +49,8 @@ export default function DeckWaveform({
             {/* Mittellinie */}
             <div className="dj-center-line" />
 
-            {/* Beat-Grid nur wenn Waveform vorhanden */}
-            {hasWaveform && (
+            {/* Beat-Grid — auch ohne Waveform, wenn BPM bekannt */}
+            {beatMarkers.length > 0 && (
                 <div className="dj-beat-grid">
                     {beatMarkers.map((marker) => (
                         <div
@@ -103,13 +103,11 @@ export default function DeckWaveform({
                         });
                     })()
                 ) : (
-                    <div className="dj-waveform-empty">
-                        Track analysieren: ⚡ in der Trackliste klicken
-                    </div>
+                    <div className="dj-waveform-empty" />
                 )}
 
-                {/* Cue-Marker */}
-                {hasWaveform && cuePoints.map((cue) => {
+                {/* Cue-Marker — immer anzeigen (auch Blend-Marker ohne Analyse) */}
+                {cuePoints.map((cue) => {
                     const pct = ((cue.timeSeconds - visibleStart) / visibleDuration) * 100;
                     if (pct < 0 || pct > 100) return null;
                     return (

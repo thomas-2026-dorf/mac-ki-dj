@@ -1272,10 +1272,6 @@ body {
 
 .dj-waveform-empty {
   width: 100%;
-  text-align: center;
-  color: #1e3a5a;
-  font-size: 12px;
-  letter-spacing: 0.5px;
 }
 
 /* BPM / Key / Energy — größer und deutlicher */
@@ -1333,23 +1329,36 @@ body {
 /* ===== MixPlayer ===== */
 
 .mix-player {
-  display: grid;
-  grid-template-columns: 1fr auto 260px;
-  gap: 20px;
-  align-items: center;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
-  padding: 14px 20px;
-  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  background: #0b1120;
+  border-bottom: 2px solid #1e293b;
   flex-shrink: 0;
 }
 
-.mix-now-playing {
+/* Track-Zeile: Info + Buttons nebeneinander */
+.mix-track-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px 4px;
+}
+
+.mix-track-row-next {
+  padding-top: 8px;
+  border-top: 1px solid #1e293b;
+}
+
+.mix-track-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 
-.mix-label {
-  font-size: 10px;
+.mix-status-label {
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
   color: #475569;
@@ -1357,65 +1366,56 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 4px;
 }
 
-.mix-title {
-  font-size: 19px;
+.mix-track-title {
+  font-size: 18px;
   font-weight: 700;
   color: #f8fafc;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 70vw;
 }
 
-.mix-next-title {
+.mix-track-title-sm {
   font-size: 14px;
-  font-weight: 600;
   color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.mix-meta {
-  font-size: 12px;
-  color: #475569;
-  margin-top: 2px;
-}
-
-.mix-progress-bar {
-  height: 3px;
-  background: #1e293b;
-  border-radius: 999px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-
-.mix-progress-fill {
-  height: 100%;
-  background: #38bdf8;
-  border-radius: 999px;
-  transition: width 0.1s linear;
-}
-
-.mix-time {
+.mix-track-meta {
   font-size: 11px;
-  color: #334155;
-  margin-top: 4px;
-}
-
-.mix-empty {
-  color: #334155;
-  font-size: 13px;
-  padding: 8px 0;
-}
-
-.mix-controls {
+  color: #475569;
   display: flex;
-  flex-direction: column;
   gap: 8px;
   align-items: center;
+}
+
+.mix-timecode {
+  color: #334155;
+  font-size: 11px;
+}
+
+.mix-track-empty {
+  color: #334155;
+  font-size: 12px;
+}
+
+/* Waveform-Container */
+.mix-waveform-wrap {
+  padding: 2px 16px 6px;
+}
+
+.mix-waveform-wrap-next {
+  padding-bottom: 10px;
+}
+
+/* Buttons */
+.mix-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .mix-btn {
@@ -1423,41 +1423,19 @@ body {
   border: 1px solid #334155;
   color: #f8fafc;
   border-radius: 8px;
-  padding: 8px 18px;
+  padding: 7px 14px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-  min-width: 110px;
-  text-align: center;
 }
 
 .mix-btn:hover { opacity: 0.85; }
 
 .mix-btn-start,
-.mix-btn-play {
-  background: #16a34a;
-  border-color: #16a34a;
-}
-
-.mix-btn-pause {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
-}
-
-.mix-btn-skip {
-  background: #7c3aed;
-  border-color: #7c3aed;
-}
-
-.mix-up-next {
-  min-width: 0;
-  overflow: hidden;
-  padding: 10px 14px;
-  background: #070d1a;
-  border-radius: 10px;
-  border: 1px solid #1e293b;
-}
+.mix-btn-play  { background: #16a34a; border-color: #16a34a; }
+.mix-btn-pause { background: #1d4ed8; border-color: #1d4ed8; }
+.mix-btn-skip  { background: #7c3aed; border-color: #7c3aed; }
 
 .mix-transition-badge {
   background: #134e4a;
@@ -1470,7 +1448,6 @@ body {
 
 .mix-countdown {
   color: #fbbf24;
-  font-size: 10px;
   font-weight: 700;
 }
 

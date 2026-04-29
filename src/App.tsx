@@ -38,6 +38,8 @@ function App() {
   const feedEngine = useCallback((currentTrack: Track) => {
     const engine = mixEngineRef.current;
     if (!engine) return;
+    // Nicht doppelt vorbereiten — prüfe direkt am Engine-State
+    if (engine.getState().nextTrack) return;
     const q = queueRef.current;
     if (q.length === 0) return;
 
@@ -69,31 +71,19 @@ function App() {
     return () => engine.destroy();
   }, [feedEngine]);
 
+  // Auto-feed: wenn Engine spielt aber kein Next-Track bereit ist → Queue pumpen
+  useEffect(() => {
+    if (mixState?.status === "playing" && mixState.currentTrack && !mixState.nextTrack) {
+      feedEngine(mixState.currentTrack);
+    }
+  }, [mixState?.status, mixState?.currentTrack?.id, mixState?.nextTrack, feedEngine]);
+
   function handleTrackUpdated(updatedTrack: Track) {
     setQueue(q => q.map(t => t.id === updatedTrack.id ? updatedTrack : t));
   }
 
   function addTrackToQueue(track: Track) {
-    const engine = mixEngineRef.current;
-    const state = engine?.getState();
-
-    if (!state || state.status === "idle") {
-      engine?.loadAndPlay(track).then(() => {
-        const q = queueRef.current;
-        if (q.length > 0) {
-          const [next, ...rest] = q;
-          queueRef.current = rest;
-          setQueue(rest);
-          const plan = planMixTransition(track, next);
-          engine?.prepareNext(next, plan);
-        }
-      });
-    } else if (state.currentTrack && !state.nextTrack) {
-      const plan = planMixTransition(state.currentTrack, track);
-      engine!.prepareNext(track, plan);
-    } else {
-      setQueue(prev => [...prev, track]);
-    }
+    setQueue(prev => [...prev, track]);
   }
 
   function handleStartAutomix() {
@@ -154,6 +144,7 @@ function App() {
         onPause={() => mixEngineRef.current?.pause()}
         onSkip={() => mixEngineRef.current?.skip()}
         onStartAutomix={handleStartAutomix}
+        onSeek={(t) => mixEngineRef.current?.seek(t)}
       />
 
       <div className="main-bottom">

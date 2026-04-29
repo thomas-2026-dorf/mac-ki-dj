@@ -11,6 +11,7 @@ export type MixState = {
     nextTrack: Track | null;
     currentTime: number;
     currentDuration: number;
+    nextDuration: number;
     transitionPlan: MixTransitionPlan | null;
     timeToTransition: number | null;
 };
@@ -32,6 +33,7 @@ export class MixEngine {
     private stateCallback: ((state: MixState) => void) | null = null;
     private transitionCallback: ((prev: Track, next: Track) => void) | null = null;
     private queueEmptyCallback: (() => void) | null = null;
+    private tickCount = 0;
 
     constructor() {
         this.slots = [
@@ -75,21 +77,26 @@ export class MixEngine {
 
     async prepareNext(track: Track, plan: MixTransitionPlan): Promise<void> {
         if (!track.url) return;
-        const myGen = ++this.prepareGen;
+        console.log(`[prepareNext] track="${track.title}" outroStart=${plan.outroStartSeconds.toFixed(2)} type=${plan.type}`);
 
+        // Slot sofort reservieren — verhindert Race mit auto-feed useEffect
+        this.nxt.track = track;
+        this.nxt.audio.setGain(0);
+        this.cur.plan = plan;
+        this.emitState();
+
+        const myGen = ++this.prepareGen;
         try {
             const wavPath = await ensureWavCache(track.url);
             if (myGen !== this.prepareGen) return;
-
             await this.nxt.audio.load(wavPath);
             if (myGen !== this.prepareGen) return;
-
-            this.nxt.track = track;
-            this.nxt.audio.setGain(0);
             this.nxt.audio.setRate(plan.playbackRate);
-            this.cur.plan = plan;
         } catch (e) {
             console.error("prepareNext failed:", e);
+            this.nxt.track = null;
+            this.cur.plan = null;
+            this.emitState();
             return;
         }
 
@@ -109,18 +116,25 @@ export class MixEngine {
     }
 
     private tick(): void {
-        if (this.status !== "playing") return;
+        if (this.status !== "playing" && this.status !== "transitioning") return;
+        this.tickCount++;
         const t = this.cur.audio.getTime();
         const plan = this.cur.plan;
 
-        if (!this.transitionStarted && plan && this.nxt.track && t >= plan.outroStartSeconds) {
-            this.startTransition(plan);
+        if (this.status === "playing" && !this.transitionStarted && plan) {
+            if (this.tickCount % 20 === 0) {
+                console.log(`[Tick] t=${t.toFixed(2)} outroStart=${plan.outroStartSeconds.toFixed(2)} nxt="${this.nxt.track?.title ?? "null"}"`);
+            }
+            if (this.nxt.track && t >= plan.outroStartSeconds) {
+                this.startTransition(plan);
+            }
         }
 
         this.emitState();
     }
 
     private startTransition(plan: MixTransitionPlan): void {
+        console.log(`[startTransition] type=${plan.type} blend=${plan.blendDurationSeconds}s nextOffset=${plan.nextTrackOffset.toFixed(2)} nxt="${this.nxt.track?.title}"`);
         this.transitionStarted = true;
         this.status = "transitioning";
 
@@ -160,6 +174,9 @@ export class MixEngine {
 
     private completeTransition(prevTrack: Track, nextTrack: Track): void {
         this.activeSlot = 1 - this.activeSlot;
+        // Alten Slot freigeben — sonst denkt feedEngine der Slot ist noch belegt
+        this.nxt.track = null;
+        this.nxt.plan = null;
         this.transitionStarted = false;
         this.status = "playing";
         this.transitionCallback?.(prevTrack, nextTrack);
@@ -196,6 +213,12 @@ export class MixEngine {
         this.startTransition({ ...plan, type: "cut", blendDurationSeconds: 0.05 });
     }
 
+    seek(time: number): void {
+        if (this.status === "idle" || this.status === "loading") return;
+        this.cur.audio.seek(time);
+        this.emitState();
+    }
+
     getState(): MixState {
         const t = this.cur.audio.getTime();
         const plan = this.cur.plan;
@@ -210,6 +233,7 @@ export class MixEngine {
             nextTrack: this.nxt.track,
             currentTime: t,
             currentDuration: this.cur.audio.getDuration(),
+            nextDuration: this.nxt.audio.getDuration(),
             transitionPlan: plan,
             timeToTransition,
         };

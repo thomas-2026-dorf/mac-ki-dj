@@ -1,4 +1,16 @@
 
+/* ===== MixPlayer + Layout ===== */
+
+.mix-player {
+  flex-shrink: 0 !important;
+}
+
+.main-bottom {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
 /* ===== TK-DJ MASTER LAYOUT ===== */
 
 /* unten: Library 2/3, Automix 1/3 */
