@@ -276,6 +276,16 @@ export default function Deck({
         setSyncActive(true);
     }
 
+    function handleNudge(direction: -1 | 1) {
+        const deck = deckRef.current;
+        if (!deck || !track) return;
+        const bpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
+        const beatDur = bpm > 0 ? 60 / bpm : 0.5;
+        const newTime = Math.max(0, Math.min(duration, currentTime + direction * beatDur));
+        deck.seek(newTime);
+        setCurrentTime(newTime);
+    }
+
     function seekToPosition(clientX: number, rect: DOMRect) {
         if (!track || duration <= 0) return;
         const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
@@ -344,6 +354,8 @@ export default function Deck({
                 </button>
                 <button onClick={handleStop} disabled={!track}>Stop</button>
                 <button disabled={!track}>Cue</button>
+                <button onClick={() => handleNudge(-1)} disabled={!track} title="1 Beat zurück">◀</button>
+                <button onClick={() => handleNudge(1)} disabled={!track} title="1 Beat vor">▶</button>
                 <button
                     onClick={handleSyncToggle}
                     disabled={!track || !syncMasterBpm}
