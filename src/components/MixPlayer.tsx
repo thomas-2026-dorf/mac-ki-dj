@@ -1,10 +1,30 @@
+import { useState } from "react";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
+import type { TransitionPoint } from "../types/track";
+import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import DeckWaveform from "./DeckWaveform";
+import PlayerWaveform from "./PlayerWaveform";
+
+const TYPE_OPTIONS: {
+    key: string;
+    label: string;
+    role: TransitionPoint["role"];
+    bars: TransitionPoint["bars"];
+}[] = [
+    { key: "loop-out-32", label: "Loop-Out 32b", role: "loop-out", bars: 32 },
+    { key: "loop-out-16", label: "Loop-Out 16b", role: "loop-out", bars: 16 },
+    { key: "loop-out-8",  label: "Loop-Out 8b",  role: "loop-out", bars: 8  },
+    { key: "cut-out",     label: "Cut-Out",       role: "cut-out",  bars: null },
+    { key: "passage-out", label: "Passage-Out",   role: "passage-out", bars: null },
+    { key: "loop-in-8",   label: "Loop-In 8b",   role: "loop-in",  bars: 8  },
+    { key: "loop-in-16",  label: "Loop-In 16b",  role: "loop-in",  bars: 16 },
+    { key: "cut-in",      label: "Cut-In",        role: "cut-in",   bars: null },
+    { key: "passage-in",  label: "Passage-In",    role: "passage-in", bars: null },
+];
 
 // ── Waveform-Hilfstypen ───────────────────────────────────────────────────────
 
-const VISIBLE_SECONDS = 14;
 const MAX_BARS = 320;
 
 type BeatMarker = { time: number; percent: number; beat: number };
@@ -48,36 +68,6 @@ function buildBeatMarkers(
     return markers;
 }
 
-/** Scrollendes Fenster um currentTime herum (für den laufenden Track) */
-function scrollingDisplay(
-    waveform: number[],
-    currentTime: number,
-    duration: number,
-    bpm: number,
-    gridStart: number,
-): WaveDisplay {
-    const vs = duration > VISIBLE_SECONDS
-        ? Math.min(Math.max(0, currentTime - VISIBLE_SECONDS * 0.35), duration - VISIBLE_SECONDS)
-        : 0;
-    const ve = duration > 0 ? Math.min(duration, vs + VISIBLE_SECONDS) : 0;
-    const vd = Math.max(1, ve - vs);
-
-    const raw = duration > 0 && waveform.length > 0
-        ? waveform.slice(
-            Math.floor((vs / duration) * waveform.length),
-            Math.ceil((ve / duration) * waveform.length),
-        )
-        : waveform;
-
-    return {
-        visibleWaveform: downsample(raw, MAX_BARS),
-        beatMarkers: buildBeatMarkers(vs, ve, vd, bpm, gridStart),
-        visibleStart: vs,
-        visibleDuration: vd,
-        progressPercent: vd > 0 ? Math.min(100, Math.max(0, ((currentTime - vs) / vd) * 100)) : 0,
-    };
-}
-
 /** Übersicht über den gesamten Track (für den nächsten Track) */
 function overviewDisplay(
     waveform: number[],
@@ -118,6 +108,7 @@ type MixPlayerProps = {
     onSeek: (time: number) => void;
     onStop: () => void;
     onReset: () => void;
+    onSaveTransitionPoint?: (point: TransitionPoint) => void;
 };
 
 export default function MixPlayer({
@@ -129,7 +120,9 @@ export default function MixPlayer({
     onSeek,
     onStop,
     onReset,
+    onSaveTransitionPoint,
 }: MixPlayerProps) {
+    const [selectedTypeKey, setSelectedTypeKey] = useState("loop-out-32");
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
 
@@ -142,34 +135,20 @@ export default function MixPlayer({
     const nxtDur = state?.nextDuration ?? 0;
 
     const waveA = current?.analysis?.waveform ?? [];
-    const cuesA = current?.analysis?.cuePoints ?? [];
-    const bpmA = current?.bpm ?? 0;
-    const gridA = current?.analysis?.beatGridStartSeconds ?? 0;
 
     const waveB = next?.analysis?.waveform ?? [];
     const cuesB = next?.analysis?.cuePoints ?? [];
+    const tpB = next?.transitionPoints ?? [];
     const bpmB = next?.bpm ?? 0;
     const gridB = next?.analysis?.beatGridStartSeconds ?? 0;
     const blendInTime = plan?.nextTrackOffset ?? 0;
 
-    const dispA = current ? scrollingDisplay(waveA, curTime, curDur, bpmA, gridA) : null;
     const dispB = next ? overviewDisplay(waveB, nxtDur, bpmB, gridB, blendInTime) : null;
-
-    // Blend-Out-Marker auf Track A
-    const blendOutCue = plan
-        ? [{ id: "__blend-out__", timeSeconds: plan.outroStartSeconds, name: "Blend Out" }]
-        : [];
 
     // Blend-In-Marker auf Track B
     const blendInCue = plan
         ? [{ id: "__blend-in__", timeSeconds: blendInTime, name: "Blend In" }]
         : [];
-
-    function handleSeekA(clientX: number, rect: DOMRect) {
-        if (!dispA) return;
-        const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-        onSeek(dispA.visibleStart + ratio * dispA.visibleDuration);
-    }
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
@@ -239,17 +218,53 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {dispA && (
+            {current && onSaveTransitionPoint && (() => {
+                const opt = TYPE_OPTIONS.find(o => o.key === selectedTypeKey) ?? TYPE_OPTIONS[0];
+                const color = ROLE_COLORS[opt.role].text;
+                return (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
+                        <select
+                            value={selectedTypeKey}
+                            onChange={e => setSelectedTypeKey(e.target.value)}
+                            style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "4px", color, padding: "3px 6px", fontSize: "12px", cursor: "pointer" }}
+                        >
+                            {TYPE_OPTIONS.map(o => (
+                                <option key={o.key} value={o.key} style={{ color: ROLE_COLORS[o.role].text }}>
+                                    {o.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
+                            @ {formatTime(curTime)}
+                        </span>
+                        <button
+                            onClick={() => {
+                                const point: TransitionPoint = {
+                                    id: `manual-${opt.role}-${Math.round(curTime * 10)}`,
+                                    role: opt.role,
+                                    bars: opt.bars,
+                                    timeSeconds: Math.round(curTime * 10) / 10,
+                                    source: "manual",
+                                    label: opt.label,
+                                };
+                                onSaveTransitionPoint(point);
+                            }}
+                            style={{ background: `rgba(${opt.role.startsWith("loop-out") ? "249,115,22" : opt.role.startsWith("loop-in") ? "34,197,94" : opt.role.startsWith("cut") ? "239,68,68" : "96,165,250"},0.2)`, border: `1px solid ${color}`, borderRadius: "4px", color, padding: "3px 10px", fontSize: "12px", cursor: "pointer", fontWeight: 600 }}
+                        >
+                            📍 Punkt setzen
+                        </button>
+                    </div>
+                );
+            })()}
+
+            {current && curDur > 0 && (
                 <div className="mix-waveform-wrap">
-                    <DeckWaveform
-                        waveform={dispA.visibleWaveform}
-                        beatMarkers={dispA.beatMarkers}
-                        cuePoints={[...cuesA, ...blendOutCue]}
+                    <PlayerWaveform
+                        trackId={current.id}
+                        waveform={waveA}
+                        duration={curDur}
                         currentTime={curTime}
-                        visibleStart={dispA.visibleStart}
-                        visibleDuration={dispA.visibleDuration}
-                        progressPercent={dispA.progressPercent}
-                        onSeek={handleSeekA}
+                        onSeek={onSeek}
                     />
                 </div>
             )}
@@ -281,6 +296,7 @@ export default function MixPlayer({
                         waveform={dispB.visibleWaveform}
                         beatMarkers={dispB.beatMarkers}
                         cuePoints={[...cuesB, ...blendInCue]}
+                        transitionPoints={tpB}
                         currentTime={blendInTime}
                         visibleStart={0}
                         visibleDuration={dispB.visibleDuration}

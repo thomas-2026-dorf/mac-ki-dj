@@ -12,7 +12,7 @@ import { planMixTransition } from "./modules/transition/autoMixPlanner";
 import { MixEngine } from "./modules/audio/mixEngine";
 import type { MixState } from "./modules/audio/mixEngine";
 
-import type { Track } from "./types/track";
+import type { Track, TransitionPoint } from "./types/track";
 
 const QUEUE_STORAGE_KEY = "tk-dj-queue-v1";
 
@@ -25,6 +25,8 @@ function loadSavedQueue(): Track[] {
 function App() {
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
   const [mixState, setMixState] = useState<MixState | null>(null);
+  const [currentTrackTPs, setCurrentTrackTPs] = useState<TransitionPoint[] | null>(null);
+  const currentTrackIdRef = useRef<string | null>(null);
 
   const mixEngineRef = useRef<MixEngine | null>(null);
   const queueRef = useRef<Track[]>(queue);
@@ -81,6 +83,31 @@ function App() {
 
   function handleTrackUpdated(updatedTrack: Track) {
     setQueue(q => q.map(t => t.id === updatedTrack.id ? updatedTrack : t));
+  }
+
+  function handleSaveTransitionPoint(point: TransitionPoint) {
+    const track = mixState?.currentTrack;
+    if (!track) return;
+
+    // Reset override wenn Track gewechselt hat
+    if (currentTrackIdRef.current !== track.id) {
+      currentTrackIdRef.current = track.id;
+      setCurrentTrackTPs(null);
+    }
+
+    const existing = currentTrackTPs ?? track.transitionPoints ?? [];
+    const updated = [...existing, point];
+    setCurrentTrackTPs(updated);
+
+    // localStorage-Bibliothek aktualisieren
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    const updatedLibrary = library.map(t =>
+      t.id === track.id ? { ...t, transitionPoints: updated } : t
+    );
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(updatedLibrary));
+
+    handleTrackUpdated({ ...track, transitionPoints: updated });
   }
 
   function addTrackToQueue(track: Track) {
@@ -146,10 +173,22 @@ function App() {
   const referenceTrack = mixState?.currentTrack ?? (queue.length > 0 ? queue[0] : null);
   const isRunning = mixState?.status === "playing" || mixState?.status === "transitioning";
 
+  // Wenn Track wechselt: Override zurücksetzen
+  const currentTrackId = mixState?.currentTrack?.id ?? null;
+  if (currentTrackIdRef.current !== currentTrackId) {
+    currentTrackIdRef.current = currentTrackId;
+    if (currentTrackTPs !== null) setCurrentTrackTPs(null);
+  }
+
+  // Override: gespeicherte TPs des laufenden Tracks sofort in Waveform zeigen
+  const mixStateForPlayer: MixState | null = mixState && currentTrackTPs && mixState.currentTrack
+    ? { ...mixState, currentTrack: { ...mixState.currentTrack, transitionPoints: currentTrackTPs } }
+    : mixState;
+
   return (
     <div className="app">
       <MixPlayer
-        state={mixState}
+        state={mixStateForPlayer}
         onPlay={() => mixEngineRef.current?.resume()}
         onPause={() => mixEngineRef.current?.pause()}
         onSkip={() => mixEngineRef.current?.skip()}
@@ -157,6 +196,7 @@ function App() {
         onSeek={(t) => mixEngineRef.current?.seek(t)}
         onStop={handleStop}
         onReset={handleReset}
+        onSaveTransitionPoint={handleSaveTransitionPoint}
       />
 
       <div className="main-bottom">

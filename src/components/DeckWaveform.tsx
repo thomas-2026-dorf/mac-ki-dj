@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import type { TransitionPoint } from "../types/track";
+import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 
 type BeatMarker = {
     time: number;
@@ -17,6 +19,7 @@ type Props = {
     waveform: number[];
     beatMarkers: BeatMarker[];
     cuePoints: CuePoint[];
+    transitionPoints?: TransitionPoint[];
     currentTime: number;
     visibleStart: number;
     visibleDuration: number;
@@ -28,6 +31,7 @@ export default function DeckWaveform({
     waveform,
     beatMarkers,
     cuePoints,
+    transitionPoints,
     currentTime,
     visibleStart,
     visibleDuration,
@@ -117,6 +121,34 @@ export default function DeckWaveform({
                             style={{ left: `${pct}%` }}
                             title={cue.name ?? ""}
                         />
+                    );
+                })}
+
+                {/* TransitionPoint-Marker */}
+                {(transitionPoints ?? []).map((tp) => {
+                    const pct = ((tp.timeSeconds - visibleStart) / visibleDuration) * 100;
+                    if (pct < -0.5 || pct > 100.5) return null;
+                    const clampedPct = Math.max(0, Math.min(100, pct));
+                    const color = ROLE_COLORS[tp.role]?.text ?? "#94a3b8";
+                    const mm = Math.floor(tp.timeSeconds / 60);
+                    const ss = String(Math.floor(tp.timeSeconds % 60)).padStart(2, "0");
+                    return (
+                        <div
+                            key={tp.id}
+                            title={`${tp.label ?? tp.role} @ ${mm}:${ss}`}
+                            style={{
+                                position: "absolute", left: `${clampedPct}%`, top: 0, bottom: 0,
+                                width: "2px", background: color, opacity: 0.9, zIndex: 4,
+                                pointerEvents: "none",
+                            }}
+                        >
+                            <div style={{
+                                position: "absolute", top: 0, left: "50%",
+                                transform: "translateX(-50%)",
+                                width: "7px", height: "7px", borderRadius: "50%",
+                                background: color,
+                            }} />
+                        </div>
                     );
                 })}
 
