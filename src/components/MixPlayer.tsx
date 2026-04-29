@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
 import type { TransitionPoint } from "../types/track";
@@ -12,20 +11,18 @@ const TYPE_OPTIONS: {
     role: TransitionPoint["role"];
     bars: TransitionPoint["bars"];
 }[] = [
-    { key: "loop-out-32", label: "Loop-Out 32b", role: "loop-out", bars: 32 },
-    { key: "loop-out-16", label: "Loop-Out 16b", role: "loop-out", bars: 16 },
-    { key: "loop-out-8",  label: "Loop-Out 8b",  role: "loop-out", bars: 8  },
-    { key: "cut-out",     label: "Cut-Out",       role: "cut-out",  bars: null },
-    { key: "passage-out", label: "Passage-Out",   role: "passage-out", bars: null },
-    { key: "loop-in-8",   label: "Loop-In 8b",   role: "loop-in",  bars: 8  },
-    { key: "loop-in-16",  label: "Loop-In 16b",  role: "loop-in",  bars: 16 },
-    { key: "cut-in",      label: "Cut-In",        role: "cut-in",   bars: null },
-    { key: "passage-in",  label: "Passage-In",    role: "passage-in", bars: null },
+    { key: "loop-out-8",  label: "Loop-Out 8",  role: "loop-out",    bars: 8    },
+    { key: "loop-out-16", label: "Loop-Out 16", role: "loop-out",    bars: 16   },
+    { key: "loop-out-32", label: "Loop-Out 32", role: "loop-out",    bars: 32   },
+    { key: "cut-out",     label: "Cut-Out",     role: "cut-out",     bars: null },
+    { key: "loop-in",     label: "Loop-In",     role: "loop-in",     bars: 8    },
+    { key: "cut-in",      label: "Cut-In",      role: "cut-in",      bars: null },
+    { key: "passage",     label: "Passage",     role: "passage-out", bars: null },
 ];
 
 // ── Waveform-Hilfstypen ───────────────────────────────────────────────────────
 
-const MAX_BARS = 320;
+const MAX_BARS = 600;
 
 type BeatMarker = { time: number; percent: number; beat: number };
 
@@ -109,6 +106,7 @@ type MixPlayerProps = {
     onStop: () => void;
     onReset: () => void;
     onSaveTransitionPoint?: (point: TransitionPoint) => void;
+    onRemoveTransitionPoint?: (pointId: string) => void;
 };
 
 export default function MixPlayer({
@@ -121,8 +119,8 @@ export default function MixPlayer({
     onStop,
     onReset,
     onSaveTransitionPoint,
+    onRemoveTransitionPoint,
 }: MixPlayerProps) {
-    const [selectedTypeKey, setSelectedTypeKey] = useState("loop-out-32");
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
 
@@ -218,47 +216,70 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {current && onSaveTransitionPoint && (() => {
-                const opt = TYPE_OPTIONS.find(o => o.key === selectedTypeKey) ?? TYPE_OPTIONS[0];
-                const color = ROLE_COLORS[opt.role].text;
-                return (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
-                        <select
-                            value={selectedTypeKey}
-                            onChange={e => setSelectedTypeKey(e.target.value)}
-                            style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "4px", color, padding: "3px 6px", fontSize: "12px", cursor: "pointer" }}
-                        >
-                            {TYPE_OPTIONS.map(o => (
-                                <option key={o.key} value={o.key} style={{ color: ROLE_COLORS[o.role].text }}>
-                                    {o.label}
-                                </option>
-                            ))}
-                        </select>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
-                            @ {formatTime(curTime)}
-                        </span>
-                        <button
-                            onClick={() => {
-                                const point: TransitionPoint = {
-                                    id: `manual-${opt.role}-${Math.round(curTime * 10)}`,
-                                    role: opt.role,
-                                    bars: opt.bars,
-                                    timeSeconds: Math.round(curTime * 10) / 10,
-                                    source: "manual",
-                                    label: opt.label,
-                                };
-                                onSaveTransitionPoint(point);
-                            }}
-                            style={{ background: `rgba(${opt.role.startsWith("loop-out") ? "249,115,22" : opt.role.startsWith("loop-in") ? "34,197,94" : opt.role.startsWith("cut") ? "239,68,68" : "96,165,250"},0.2)`, border: `1px solid ${color}`, borderRadius: "4px", color, padding: "3px 10px", fontSize: "12px", cursor: "pointer", fontWeight: 600 }}
-                        >
-                            📍 Punkt setzen
-                        </button>
-                    </div>
-                );
-            })()}
+            {current && onSaveTransitionPoint && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums", marginRight: "4px" }}>
+                        @ {formatTime(curTime)}
+                    </span>
+                    {TYPE_OPTIONS.map(opt => {
+                        const c = ROLE_COLORS[opt.role];
+                        return (
+                            <button
+                                key={opt.key}
+                                onClick={() => {
+                                    const point: TransitionPoint = {
+                                        id: `manual-${opt.role}-${Math.round(curTime * 10)}`,
+                                        role: opt.role,
+                                        bars: opt.bars,
+                                        timeSeconds: Math.round(curTime * 10) / 10,
+                                        source: "manual",
+                                        label: opt.label,
+                                    };
+                                    onSaveTransitionPoint(point);
+                                }}
+                                style={{
+                                    background: c.bg,
+                                    border: `1px solid ${c.border}`,
+                                    borderRadius: "4px",
+                                    color: c.text,
+                                    padding: "3px 8px",
+                                    fontSize: "11px",
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                }}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Gespeicherte Punkte mit × zum Entfernen */}
+            {current && onRemoveTransitionPoint && (current.transitionPoints ?? []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px", background: "rgba(15,23,42,0.6)" }}>
+                    <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
+                    {(current.transitionPoints ?? []).map(p => {
+                        const c = ROLE_COLORS[p.role];
+                        return (
+                            <span
+                                key={p.id}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
+                            >
+                                {p.label ?? p.role} @ {formatTime(p.timeSeconds)}
+                                <button
+                                    onClick={() => onRemoveTransitionPoint(p.id)}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
+                                    title="Entfernen"
+                                >×</button>
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
 
             {current && curDur > 0 && (
-                <div className="mix-waveform-wrap">
+                <div className="mix-waveform-wrap" style={{ position: "relative" }}>
                     <PlayerWaveform
                         trackId={current.id}
                         waveform={waveA}
@@ -266,6 +287,54 @@ export default function MixPlayer({
                         currentTime={curTime}
                         onSeek={onSeek}
                     />
+                    {/* Taktstriche Overlay für Deck 1 */}
+                    {current.bpm > 0 && (() => {
+                        const gridA = current.analysis?.beatGridStartSeconds ?? 0;
+                        const markers = buildBeatMarkers(0, curDur, curDur, current.bpm, gridA, true);
+                        return (
+                            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 4, overflow: "hidden" }}>
+                                {markers.map(m => (
+                                    <div
+                                        key={`a${m.time}`}
+                                        style={{
+                                            position: "absolute",
+                                            left: `${m.percent}%`,
+                                            top: 0, bottom: 0, width: "1px",
+                                            background: "rgba(255,255,255,0.35)",
+                                        }}
+                                    >
+                                        <span style={{ position: "absolute", top: 2, left: 2, fontSize: "8px", color: "rgba(255,255,255,0.4)", lineHeight: 1, userSelect: "none" }}>1</span>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })()}
+                    {/* Beat-Zonen-Overlay für gespeicherte TransitionPoints */}
+                    {(current.transitionPoints ?? []).map(p => {
+                        if (!p.bars || !current.bpm) return null;
+                        const beatDur = 60 / current.bpm;
+                        const zoneDur = p.bars * beatDur;
+                        const leftPct = (p.timeSeconds / curDur) * 100;
+                        const widthPct = Math.min((zoneDur / curDur) * 100, 100 - leftPct);
+                        const c = ROLE_COLORS[p.role];
+                        return (
+                            <div
+                                key={p.id}
+                                title={`${p.label ?? p.role} — ${p.bars} Beats`}
+                                style={{
+                                    position: "absolute",
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                    top: 0,
+                                    height: "80px",
+                                    background: c.bg,
+                                    borderLeft: `2px solid ${c.border}`,
+                                    pointerEvents: "none",
+                                    zIndex: 3,
+                                }}
+                            />
+                        );
+                    })}
                 </div>
             )}
 

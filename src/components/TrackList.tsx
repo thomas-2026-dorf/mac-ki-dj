@@ -14,7 +14,9 @@ const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
 const TRACK_LIBRARY_STORAGE_KEY = "tk-dj-track-library-v1";
 
 type Props = {
-    onLoadA: (track: Track) => void;
+    onLoadA: (track: Track) => void;   // Doppelklick / Automix-Queue
+    onLoadP1?: (track: Track) => void; // ▶1 Button → direkt in Player 1
+    onLoadB?: (track: Track) => void;  // ▶2 Button → direkt in Player 2
     onTrackSelected?: (track: Track) => void;
     onTrackUpdated?: (track: Track) => void;
     referenceTrack?: Track | null;
@@ -92,6 +94,8 @@ function cleanAmazonTitle(title: string): string {
 
 export default function TrackList({
     onLoadA,
+    onLoadP1,
+    onLoadB,
     onTrackSelected,
     onTrackUpdated,
     referenceTrack,
@@ -105,6 +109,7 @@ export default function TrackList({
     const [analysisDebugMessage, setAnalysisDebugMessage] = useState<string>("");
     const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
     const [suggestMenuTrackId, setSuggestMenuTrackId] = useState<string | null>(null);
+    const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -112,6 +117,56 @@ export default function TrackList({
         if (folder) {
             localStorage.setItem(MUSIC_FOLDER_STORAGE_KEY, folder);
         }
+    }
+
+    // Einzelnen Track analysieren und Library aktualisieren (shared von ⚡ und Batch)
+    async function analyzeTrack(track: Track, currentTracks: Track[]): Promise<Track[]> {
+        if (!track.url) return currentTracks;
+        const analysisResult = await prepareTrackAnalysis(track.url);
+        if (!analysisResult.success || !analysisResult.analysis) return currentTracks;
+        const a = analysisResult.analysis;
+        const r = analysisResult.rustAnalysis;
+        const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
+        const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
+        const updatedTrack: Track = {
+            ...track,
+            bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
+            key: a.camelotKey || a.key || track.key,
+            energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
+            analysis: {
+                ...(track.analysis ?? { cuePoints: [], loops: [] }),
+                status: "done", waveform: a.waveform, detectedBpm: floatBpm,
+                beatGridStartSeconds: gridStart, beats: r?.beats,
+                bpmConfidence: a.bpmConfidence, bpmSource: "auto",
+                cuePoints: track.analysis?.cuePoints ?? [],
+                loops: track.analysis?.loops ?? [],
+            },
+        };
+        const updatedTracks = currentTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+        setTracks(updatedTracks);
+        onTrackUpdated?.(updatedTrack);
+        return updatedTracks;
+    }
+
+    async function handleAnalyzeAll() {
+        const toAnalyze = tracks.filter(t => t.url && !(t.analysis?.waveform?.length));
+        if (toAnalyze.length === 0) {
+            setAnalysisDebugMessage("Alle Tracks bereits analysiert.");
+            return;
+        }
+        setBatchProgress({ done: 0, total: toAnalyze.length });
+        let currentTracks = tracks;
+        const CONCURRENCY = 3;
+        for (let i = 0; i < toAnalyze.length; i += CONCURRENCY) {
+            const batch = toAnalyze.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(batch.map(t => analyzeTrack(t, currentTracks)));
+            // Letztes Ergebnis enthält die aktuellste Track-Liste
+            currentTracks = results[results.length - 1];
+            saveLibrary(currentTracks, musicFolder);
+            setBatchProgress({ done: Math.min(i + CONCURRENCY, toAnalyze.length), total: toAnalyze.length });
+        }
+        setBatchProgress(null);
+        setAnalysisDebugMessage(`${toAnalyze.length} Tracks analysiert.`);
     }
 
     useEffect(() => {
@@ -342,6 +397,17 @@ export default function TrackList({
                 <button className="library-action-button" type="button" onClick={handleSelectFolder}>
                     Musikordner wählen
                 </button>
+                <button
+                    className="library-action-button"
+                    type="button"
+                    onClick={handleAnalyzeAll}
+                    disabled={!!batchProgress}
+                    title="Alle nicht analysierten Tracks analysieren (3 parallel)"
+                >
+                    {batchProgress
+                        ? `Analysiere… ${batchProgress.done}/${batchProgress.total}`
+                        : "Alle analysieren"}
+                </button>
             </div>
 
             <div className="track-edit-panel">
@@ -521,6 +587,22 @@ export default function TrackList({
                         <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 <button
+                                    onClick={(e) => { e.stopPropagation(); (onLoadP1 ?? onLoadA)(track); }}
+                                    style={{ background: "rgba(56,189,248,0.15)", border: "1px solid rgba(56,189,248,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 7px", color: "#38bdf8", fontWeight: 700, fontSize: "11px" }}
+                                    title="In Player 1 laden"
+                                >
+                                    ▶1
+                                </button>
+                                {onLoadB && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onLoadB(track); }}
+                                        style={{ background: "rgba(167,139,250,0.15)", border: "1px solid rgba(167,139,250,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 7px", color: "#a78bfa", fontWeight: 700, fontSize: "11px" }}
+                                        title="In Player 2 laden (Next)"
+                                    >
+                                        ▶2
+                                    </button>
+                                )}
+                                <button
                                     onClick={(e) => { e.stopPropagation(); selectTrack(track); }}
                                     style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#cbd5f5" }}
                                     title="Bearbeiten"
@@ -533,33 +615,13 @@ export default function TrackList({
                                         e.stopPropagation();
                                         if (!track.url) { setAnalysisDebugMessage("Kein Datei-Pfad vorhanden."); return; }
                                         setAnalysisDebugMessage("Analyse gestartet...");
-                                        const analysisResult = await prepareTrackAnalysis(track.url);
-                                        if (analysisResult.success && analysisResult.analysis) {
-                                            const a = analysisResult.analysis;
-                                            const r = analysisResult.rustAnalysis;
-                                            const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
-                                            const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
-                                            const updatedTrack: Track = {
-                                                ...track,
-                                                bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
-                                                key: a.camelotKey || a.key || track.key,
-                                                energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
-                                                analysis: {
-                                                    ...(track.analysis ?? { cuePoints: [], loops: [] }),
-                                                    status: "done", waveform: a.waveform, detectedBpm: floatBpm,
-                                                    beatGridStartSeconds: gridStart, beats: r?.beats,
-                                                    bpmConfidence: a.bpmConfidence, bpmSource: "auto",
-                                                    cuePoints: track.analysis?.cuePoints ?? [],
-                                                    loops: track.analysis?.loops ?? [],
-                                                },
-                                            };
-                                            const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
-                                            setTracks(updatedTracks);
-                                            saveLibrary(updatedTracks, musicFolder);
-                                            onTrackUpdated?.(updatedTrack);
-                                            setAnalysisDebugMessage((analysisResult.cached ? "Cache: " : "Neu: ") + `BPM ${updatedTrack.bpm} · Key ${updatedTrack.key} · Energy ${updatedTrack.energy}`);
+                                        const updatedTracks = await analyzeTrack(track, tracks);
+                                        saveLibrary(updatedTracks, musicFolder);
+                                        const updated = updatedTracks.find(t => t.id === track.id);
+                                        if (updated?.analysis?.waveform?.length) {
+                                            setAnalysisDebugMessage(`BPM ${updated.bpm} · Key ${updated.key} · Energy ${updated.energy}`);
                                         } else {
-                                            setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
+                                            setAnalysisDebugMessage("Analyse fehlgeschlagen.");
                                         }
                                     }}
                                     style={{ marginLeft: "2px", background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#86efac" }}

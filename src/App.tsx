@@ -11,6 +11,7 @@ import { calculateTransitionScore } from "./modules/transition/transitionScore";
 import { planMixTransition } from "./modules/transition/autoMixPlanner";
 import { MixEngine } from "./modules/audio/mixEngine";
 import type { MixState } from "./modules/audio/mixEngine";
+import { loadAnalysisCache } from "./modules/analysis/analysisCache";
 
 import type { Track, TransitionPoint } from "./types/track";
 
@@ -27,6 +28,10 @@ function App() {
   const [mixState, setMixState] = useState<MixState | null>(null);
   const [currentTrackTPs, setCurrentTrackTPs] = useState<TransitionPoint[] | null>(null);
   const currentTrackIdRef = useRef<string | null>(null);
+
+  // Waveform-Override: automatisch aus File-Cache laden wenn Track keine Waveform hat
+  const [currentWaveformOverride, setCurrentWaveformOverride] = useState<number[] | null>(null);
+  const [nextWaveformOverride, setNextWaveformOverride] = useState<number[] | null>(null);
 
   const mixEngineRef = useRef<MixEngine | null>(null);
   const queueRef = useRef<Track[]>(queue);
@@ -81,8 +86,46 @@ function App() {
     }
   }, [mixState?.status, mixState?.currentTrack?.id, mixState?.nextTrack, queue.length, feedEngine]);
 
+  // Waveform auto-load: Track hat keine Waveform → File-Cache lesen (kein WAV, <1s)
+  useEffect(() => {
+    setCurrentWaveformOverride(null);
+    const track = mixState?.currentTrack;
+    if (!track?.url || (track.analysis?.waveform?.length ?? 0) > 0) return;
+    let cancelled = false;
+    loadAnalysisCache(track.url)
+      .then(cached => { if (!cancelled && (cached?.waveform?.length ?? 0) > 0) setCurrentWaveformOverride(cached!.waveform!); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [mixState?.currentTrack?.id]);
+
+  useEffect(() => {
+    setNextWaveformOverride(null);
+    const track = mixState?.nextTrack;
+    if (!track?.url || (track.analysis?.waveform?.length ?? 0) > 0) return;
+    let cancelled = false;
+    loadAnalysisCache(track.url)
+      .then(cached => { if (!cancelled && (cached?.waveform?.length ?? 0) > 0) setNextWaveformOverride(cached!.waveform!); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [mixState?.nextTrack?.id]);
+
   function handleTrackUpdated(updatedTrack: Track) {
     setQueue(q => q.map(t => t.id === updatedTrack.id ? updatedTrack : t));
+  }
+
+  function handleRemoveTransitionPoint(pointId: string) {
+    const track = mixState?.currentTrack;
+    if (!track) return;
+    const existing = currentTrackTPs ?? track.transitionPoints ?? [];
+    const updated = existing.filter(p => p.id !== pointId);
+    setCurrentTrackTPs(updated);
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    const updatedLibrary = library.map(t =>
+      t.id === track.id ? { ...t, transitionPoints: updated } : t
+    );
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(updatedLibrary));
+    handleTrackUpdated({ ...track, transitionPoints: updated });
   }
 
   function handleSaveTransitionPoint(point: TransitionPoint) {
@@ -167,6 +210,25 @@ function App() {
     setQueue([]);
   }
 
+  function handleLoadToPlayer1(track: Track) {
+    const engine = mixEngineRef.current;
+    if (!engine) return;
+    engine.loadAndPlay(track);
+  }
+
+  function handleLoadToPlayer2(track: Track) {
+    const engine = mixEngineRef.current;
+    if (!engine) return;
+    const current = engine.getState().currentTrack;
+    if (!current) {
+      // Kein laufender Track → zur Queue hinzufügen
+      addTrackToQueue(track);
+      return;
+    }
+    const plan = planMixTransition(current, track);
+    engine.prepareNext(track, plan);
+  }
+
   const nextTransitionScore =
     queue.length >= 2 ? calculateTransitionScore(queue[0], queue[1]) : null;
 
@@ -180,10 +242,32 @@ function App() {
     if (currentTrackTPs !== null) setCurrentTrackTPs(null);
   }
 
-  // Override: gespeicherte TPs des laufenden Tracks sofort in Waveform zeigen
-  const mixStateForPlayer: MixState | null = mixState && currentTrackTPs && mixState.currentTrack
-    ? { ...mixState, currentTrack: { ...mixState.currentTrack, transitionPoints: currentTrackTPs } }
-    : mixState;
+  // Waveform + TransitionPoints in mixState einpflegen ohne Engine-State zu berühren
+  const mixStateForPlayer: MixState | null = (() => {
+    if (!mixState) return null;
+    let current = mixState.currentTrack;
+    let next = mixState.nextTrack;
+
+    if (current) {
+      if (currentTrackTPs) {
+        current = { ...current, transitionPoints: currentTrackTPs };
+      }
+      if (currentWaveformOverride && !(current.analysis?.waveform?.length)) {
+        current = {
+          ...current,
+          analysis: { cuePoints: [], loops: [], ...current.analysis, waveform: currentWaveformOverride, status: "done" },
+        };
+      }
+    }
+    if (next && nextWaveformOverride && !(next.analysis?.waveform?.length)) {
+      next = {
+        ...next,
+        analysis: { cuePoints: [], loops: [], ...next.analysis, waveform: nextWaveformOverride, status: "done" },
+      };
+    }
+
+    return { ...mixState, currentTrack: current, nextTrack: next };
+  })();
 
   return (
     <div className="app">
@@ -197,11 +281,14 @@ function App() {
         onStop={handleStop}
         onReset={handleReset}
         onSaveTransitionPoint={handleSaveTransitionPoint}
+        onRemoveTransitionPoint={handleRemoveTransitionPoint}
       />
 
       <div className="main-bottom">
         <TrackList
           onLoadA={addTrackToQueue}
+          onLoadP1={handleLoadToPlayer1}
+          onLoadB={handleLoadToPlayer2}
           onTrackSelected={() => {}}
           onTrackUpdated={handleTrackUpdated}
           referenceTrack={referenceTrack}
