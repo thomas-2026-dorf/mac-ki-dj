@@ -25,6 +25,7 @@ type Props = {
     visibleDuration: number;
     progressPercent: number;
     onSeek: (clientX: number, rect: DOMRect) => void;
+    onPan?: (deltaX: number, viewWidth: number) => void;
 };
 
 export default function DeckWaveform({
@@ -37,9 +38,11 @@ export default function DeckWaveform({
     visibleDuration,
     progressPercent,
     onSeek,
+    onPan,
 }: Props) {
     const waveformRef = useRef<HTMLDivElement | null>(null);
-    const [isScrubbing, setIsScrubbing] = useState(false);
+    const [isActive, setIsActive] = useState(false);
+    const dragXRef = useRef<number | null>(null);
 
     const hasWaveform = waveform.length > 0;
 
@@ -61,9 +64,7 @@ export default function DeckWaveform({
                             key={`beat-${marker.time}`}
                             className={`dj-beat-marker beat-${marker.beat}`}
                             style={{ left: `${marker.percent}%` }}
-                        >
-                            {marker.beat === 1 && <span className="dj-beat-one">1</span>}
-                        </div>
+                        />
                     ))}
                 </div>
             )}
@@ -72,17 +73,31 @@ export default function DeckWaveform({
             <div
                 ref={waveformRef}
                 className="dj-waveform-stage"
+                style={{ cursor: onPan ? "ew-resize" : "crosshair" }}
                 onMouseDown={(e) => {
-                    const rect = getRect();
-                    if (rect) { setIsScrubbing(true); onSeek(e.clientX, rect); }
+                    setIsActive(true);
+                    if (onPan) {
+                        dragXRef.current = e.clientX;
+                    } else {
+                        const rect = getRect();
+                        if (rect) onSeek(e.clientX, rect);
+                    }
                 }}
                 onMouseMove={(e) => {
-                    if (!isScrubbing) return;
-                    const rect = getRect();
-                    if (rect) onSeek(e.clientX, rect);
+                    if (!isActive) return;
+                    if (onPan) {
+                        const rect = getRect();
+                        if (rect && dragXRef.current !== null) {
+                            onPan(e.clientX - dragXRef.current, rect.width);
+                            dragXRef.current = e.clientX;
+                        }
+                    } else {
+                        const rect = getRect();
+                        if (rect) onSeek(e.clientX, rect);
+                    }
                 }}
-                onMouseUp={() => setIsScrubbing(false)}
-                onMouseLeave={() => setIsScrubbing(false)}
+                onMouseUp={() => { setIsActive(false); dragXRef.current = null; }}
+                onMouseLeave={() => { setIsActive(false); dragXRef.current = null; }}
             >
                 {hasWaveform ? (
                     (() => {

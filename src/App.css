@@ -946,7 +946,7 @@ body {
 /* ===== TK-DJ FIX: Scrollbereiche + Bearbeiten sichtbar ===== */
 
 .main-bottom {
-  height: calc(100vh - 260px) !important;
+  height: calc(100vh - 295px) !important;
   min-height: 360px !important;
   overflow: hidden !important;
 }
@@ -1171,7 +1171,7 @@ body {
 
 .dj-waveform-outer {
   position: relative;
-  height: 140px;
+  height: 175px;
   background: #04090f;
   border-radius: 4px;
   overflow: hidden;
@@ -1205,19 +1205,13 @@ body {
   width: 1px;
 }
 
-.beat-1 { background: rgba(255,255,255,0.45); }
-.beat-2 { background: rgba(255,255,255,0.10); }
-.beat-3 { background: rgba(255,255,255,0.10); }
-.beat-4 { background: rgba(255,255,255,0.10); }
+/* Beatgrid im Zoom: beat-1 = Taktstrich (klar), 2-4 = Zählzeiten (dezent) */
+.beat-1 { background: rgba(255,255,255,0.55); width: 2px; }
+.beat-2 { background: rgba(255,255,255,0.16); }
+.beat-3 { background: rgba(255,255,255,0.16); }
+.beat-4 { background: rgba(255,255,255,0.16); }
 
-.dj-beat-one {
-  position: absolute;
-  top: 3px;
-  left: 2px;
-  font-size: 8px;
-  color: rgba(255,255,255,0.5);
-  pointer-events: none;
-}
+/* .dj-beat-one nicht mehr verwendet (kein Label in Zoom-Ansicht) */
 
 .dj-waveform-stage {
   position: absolute;
@@ -1232,9 +1226,9 @@ body {
 
 .dj-bar {
   flex: 1;
-  min-width: 0.5px;
-  max-width: 2px;
-  border-radius: 0;
+  min-width: 1px;
+  max-width: 3px;
+  border-radius: 1px;
 }
 
 /* Ungespielt — blau kalt */
@@ -1432,6 +1426,19 @@ body {
 
 .mix-waveform-wrap-next {
   padding-bottom: 10px;
+}
+
+.mix-waveform-cursor-label {
+  font-size: 10px;
+  color: #64748b;
+  padding: 0 2px 3px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.mix-waveform-cursor-hint {
+  color: #334155;
+  margin-left: 6px;
 }
 
 /* Buttons */

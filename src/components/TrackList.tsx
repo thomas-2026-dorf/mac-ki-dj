@@ -8,6 +8,7 @@ import { calculateTransitionScore } from "../modules/transition/transitionScore"
 import { suggestTransitionPoints, formatTransitionTime, ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
+import { runEssentiaTest } from "../modules/analysis/essentiaTest";
 import type { Track, TransitionPoint } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
@@ -449,6 +450,7 @@ export default function TrackList({
                     </button>
                 )}
 
+
                 {analysisDebugMessage && (
                     <div style={{ marginTop: "8px", color: "#86efac", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
                         {analysisDebugMessage}
@@ -628,6 +630,28 @@ export default function TrackList({
                                     title="Track analysieren"
                                 >
                                     ⚡
+                                </button>
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!track.url) return;
+                                        setAnalysisDebugMessage("Essentia Test läuft… (Konsole beobachten)");
+                                        try {
+                                            await runEssentiaTest(track.url, {
+                                                bpm: track.bpm,
+                                                detectedBpm: track.analysis?.detectedBpm,
+                                                beatGridStartSeconds: track.analysis?.beatGridStartSeconds,
+                                                key: track.key,
+                                            });
+                                            setAnalysisDebugMessage("Essentia Test abgeschlossen – siehe Konsole");
+                                        } catch (err) {
+                                            setAnalysisDebugMessage("Essentia Fehler: " + String(err));
+                                        }
+                                    }}
+                                    style={{ marginLeft: "2px", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#fbbf24" }}
+                                    title="Essentia.js Vergleichsanalyse (Konsole)"
+                                >
+                                    🧪
                                 </button>
                                 <button
                                     onClick={e => { e.stopPropagation(); setSuggestMenuTrackId(suggestMenuTrackId === track.id ? null : track.id); }}

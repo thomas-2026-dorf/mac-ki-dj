@@ -206,7 +206,9 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     };
 
     let aubio_bpm = aubio_tempo.get_bpm() as f64;
-    let use_aubio = aubio_bpm > 0.0 && aubio_beats.len() >= 4;
+    let aubio_confidence = aubio_tempo.get_confidence() as f64;
+    // Aubio nur verwenden wenn genug Beats und ausreichend Konfidenz (0.11 = unzuverlässig)
+    let use_aubio = aubio_bpm > 0.0 && aubio_beats.len() >= 4 && aubio_confidence >= 0.35;
 
     let bpm = if use_aubio {
         (aubio_bpm * 10.0).round() / 10.0
@@ -243,6 +245,11 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
                 downbeats.len(),
                 result.beat_grid.beats.len()
             );
+            if !downbeats.is_empty() {
+                println!("Stratum Downbeats (erste 8): {:?}", &downbeats[..downbeats.len().min(8)]);
+            }
+            let first_beats: Vec<f64> = result.beat_grid.beats.iter().take(8).map(|&t| t as f64).collect();
+            println!("Stratum Beats (erste 8): {:?}", first_beats);
             (Some(result.bpm as f64), downbeats)
         }
         Err(err) => {
