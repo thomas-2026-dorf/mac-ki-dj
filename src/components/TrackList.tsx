@@ -150,6 +150,12 @@ export default function TrackList({
             return name.toLowerCase().endsWith(".mp3");
         });
 
+        // Bestehende Analysen aus localStorage holen damit sie beim Ordner-Reload erhalten bleiben
+        const savedRaw = localStorage.getItem(TRACK_LIBRARY_STORAGE_KEY);
+        const savedByUrl = new Map<string, Track>(
+            (savedRaw ? (JSON.parse(savedRaw) as Track[]) : []).map(t => [t.url ?? "", t])
+        );
+
         const mp3Files: Track[] = [];
 
         for (const [index, entry] of mp3Entries.entries()) {
@@ -166,6 +172,7 @@ export default function TrackList({
             }
 
             const mixedInKeyData = parseMixedInKeyComment(tagData.comment);
+            const existingAnalysis = savedByUrl.get(url)?.analysis;
 
             mp3Files.push({
                 id: `${folder}-${index}`,
@@ -180,7 +187,7 @@ export default function TrackList({
                 genre: externalData?.genre || tagData.genre || "-",
                 url,
                 year: externalData?.year || tagData.year,
-                analysis: externalData?.analysis,
+                analysis: existingAnalysis ?? externalData?.analysis,
             });
         }
 
@@ -513,16 +520,25 @@ export default function TrackList({
 
                                     if (analysisResult.success && analysisResult.analysis) {
                                         const a = analysisResult.analysis;
+                                        const r = analysisResult.rustAnalysis;
+
+                                        // Float-BPM: Stratum > Aubio > JS (in dieser Reihenfolge)
+                                        const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
+                                        // Downbeat (Bar-Start): Stratum-Downbeat > Aubio-Grid > JS-Onset
+                                        const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
+
                                         const updatedTrack: Track = {
                                             ...track,
-                                            bpm: a.bpm ? Math.round(a.bpm) : track.bpm,
+                                            bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
                                             key: a.camelotKey || a.key || track.key,
                                             energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
                                             analysis: {
                                                 ...(track.analysis ?? { cuePoints: [], loops: [] }),
                                                 status: "done",
                                                 waveform: a.waveform,
-                                                detectedBpm: a.bpm ?? undefined,
+                                                detectedBpm: floatBpm,
+                                                beatGridStartSeconds: gridStart,
+                                                beats: r?.beats,
                                                 bpmConfidence: a.bpmConfidence,
                                                 bpmSource: "auto",
                                                 cuePoints: track.analysis?.cuePoints ?? [],

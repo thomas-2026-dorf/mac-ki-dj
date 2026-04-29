@@ -56,4 +56,5 @@ export type AudioAnalysisResult = {
 
     waveform: number[];
     cuePoints: CuePoint[];
+    beatGridStartSeconds: number;
 };

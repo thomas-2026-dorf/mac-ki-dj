@@ -10,7 +10,7 @@ type Props = {
 
 export default function SyncWavePanel({ deck, track, time = 0, duration = 0, onSeek }: Props) {
     const waveform = track?.analysis?.waveform ?? [];
-    const bpm = track?.bpm ?? 0;
+    const bpm = track?.analysis?.detectedBpm ?? track?.bpm ?? 0;
     const beatDuration = bpm > 0 ? 60 / bpm : 0;
     const beatGridStart = track?.analysis?.beatGridStartSeconds ?? 0;
 

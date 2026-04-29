@@ -15,6 +15,8 @@ struct AudioAnalysisBackendResult {
     grid_start_seconds: f64,
     file_size_bytes: u64,
     sample_count: u64,
+    stratum_bpm: Option<f64>,
+    stratum_downbeats: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -82,7 +84,7 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     let mut stratum_samples: Vec<f32> = Vec::new();
 
     loop {
-        if packet_count >= 4000 {
+        if packet_count >= 40000 {
             break;
         }
 
@@ -228,41 +230,26 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
             .collect()
     };
 
-    // === STRATUM DSP TEST START ===
-    match stratum_dsp::analyze_audio(
+    let (stratum_bpm, stratum_downbeats) = match stratum_dsp::analyze_audio(
         &stratum_samples,
         sample_rate as u32,
         stratum_dsp::AnalysisConfig::default(),
     ) {
         Ok(result) => {
+            let downbeats: Vec<f64> = result.beat_grid.downbeats.iter().map(|&t| t as f64).collect();
             println!(
-                "Stratum Analyse: bpm={}, bpm_confidence={}, key={}, camelot={}, key_confidence={}, beats={}, downbeats={}",
+                "Stratum: bpm={:.2}, downbeats={}, beats={}",
                 result.bpm,
-                result.bpm_confidence,
-                result.key.name(),
-                result.key.numerical(),
-                result.key_confidence,
-                result.beat_grid.beats.len(),
-                result.beat_grid.downbeats.len()
+                downbeats.len(),
+                result.beat_grid.beats.len()
             );
-
-            let beat_preview: Vec<f32> = result.beat_grid.beats.iter().take(10).copied().collect();
-            let downbeat_preview: Vec<f32> = result
-                .beat_grid
-                .downbeats
-                .iter()
-                .take(10)
-                .copied()
-                .collect();
-
-            println!("Stratum Beats Preview: {:?}", beat_preview);
-            println!("Stratum Downbeats Preview: {:?}", downbeat_preview);
+            (Some(result.bpm as f64), downbeats)
         }
         Err(err) => {
-            println!("Stratum Analyse Fehler: {:?}", err);
+            println!("Stratum Fehler: {:?}", err);
+            (None, vec![])
         }
-    }
-    // === STRATUM DSP TEST END ===
+    };
 
     println!(
         "Rust Analyse: samples={}, peaks={}, bpm={}",
@@ -334,6 +321,8 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
         grid_start_seconds,
         file_size_bytes: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
         sample_count,
+        stratum_bpm,
+        stratum_downbeats,
     })
 }
 

@@ -49,7 +49,7 @@ export default function Deck({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [pitchPercent, setPitchPercent] = useState(0);
-    const [syncActive, setSyncActive] = useState(false);
+    const [syncActive, setSyncActive] = useState(true);
 
     const deckRef = useRef<DeckAudio | null>(null);
     const lastSyncSeekRef = useRef<number>(0);
@@ -145,7 +145,7 @@ export default function Deck({
 
     // Track wechselt → WAV laden
     useEffect(() => {
-        setSyncActive(false);
+        setSyncActive(true);
         setIsPlaying(false);
         setCurrentTime(0);
         setDuration(0);
@@ -195,8 +195,11 @@ export default function Deck({
         if (phaseError > 0.5) phaseError -= 1;
         if (phaseError < -0.5) phaseError += 1;
 
+        const baseRate = Math.max(0.92, Math.min(1.08, syncMasterBpm / slaveBpm));
         const now = Date.now();
+
         if (Math.abs(phaseError) > 0.125 && now - lastSyncSeekRef.current > 500) {
+            // Großer Versatz: hart seeken
             lastSyncSeekRef.current = now;
             const plan = buildDeckSyncPlan({
                 masterTime: syncMasterTime,
@@ -210,6 +213,12 @@ export default function Deck({
                 deckRef.current?.seek(Math.max(0, plan.targetTime));
                 setCurrentTime(Math.max(0, plan.targetTime));
             }
+            deckRef.current?.setRate(baseRate);
+        } else {
+            // Kleiner Drift: Rate proportional nachregeln (wie CDJ pitch bend)
+            // phaseError > 0 → Slave ist hinter Master → schneller drehen
+            const nudge = Math.max(-0.04, Math.min(0.04, phaseError * 0.3));
+            deckRef.current?.setRate(Math.max(0.92, Math.min(1.08, baseRate + nudge)));
         }
     }, [syncMasterTime, syncActive, isPlaying]);
 
@@ -222,6 +231,9 @@ export default function Deck({
             deck.pause();
             setIsPlaying(false);
         } else {
+            if (syncActive && syncMasterBpm) {
+                handleTempoSync();
+            }
             deck.play();
             setIsPlaying(true);
             onPlay?.();

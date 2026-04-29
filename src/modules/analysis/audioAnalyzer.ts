@@ -43,6 +43,9 @@ export async function analyzeAudioBuffer(
         const waveform = generateWaveform(signal);
         const cuePoints = detectBasicCuePoints(onsets);
 
+        const firstBeat = cuePoints.find(c => c.kind === "first_beat");
+        const beatGridStartSeconds = firstBeat?.timeSeconds ?? 0;
+
         const keyResult = detectKey(audioBuffer);
 
     return {
@@ -61,6 +64,7 @@ export async function analyzeAudioBuffer(
 
             waveform,
             cuePoints,
+            beatGridStartSeconds,
 
             debug: {
                 onsetCount: onsets.length,
