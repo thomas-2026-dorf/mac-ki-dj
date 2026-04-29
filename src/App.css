@@ -1402,6 +1402,30 @@ body {
 }
 
 /* Waveform-Container */
+.mix-seekbar {
+  position: relative;
+  height: 6px;
+  margin: 0 16px 4px;
+  background: #0a1a2e;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.mix-seekbar-fill {
+  height: 100%;
+  background: #1e90ff;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.mix-seekbar-marker {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: #facc15;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
 .mix-waveform-wrap {
   padding: 2px 16px 6px;
 }

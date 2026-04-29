@@ -185,6 +185,8 @@ export class MixEngine {
 
     private handleTrackEnded(): void {
         if (this.status === "transitioning") return;
+        this.cur.track = null;
+        this.cur.plan = null;
         this.status = "idle";
         this.stopTick();
         this.emitState();
@@ -216,6 +218,21 @@ export class MixEngine {
     seek(time: number): void {
         if (this.status === "idle" || this.status === "loading") return;
         this.cur.audio.seek(time);
+        this.emitState();
+    }
+
+    stop(): void {
+        this.stopTick();
+        this.prepareGen++;
+        this.slots.forEach(s => {
+            s.audio.pause();
+            s.audio.setGain(1);
+            s.track = null;
+            s.plan = null;
+        });
+        this.activeSlot = 0;
+        this.transitionStarted = false;
+        this.status = "idle";
         this.emitState();
     }
 

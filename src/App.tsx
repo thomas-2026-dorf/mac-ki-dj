@@ -72,11 +72,12 @@ function App() {
   }, [feedEngine]);
 
   // Auto-feed: wenn Engine spielt aber kein Next-Track bereit ist → Queue pumpen
+  // queue.length als Dependency damit neu hinzugefügte Songs sofort in Player 2 landen
   useEffect(() => {
     if (mixState?.status === "playing" && mixState.currentTrack && !mixState.nextTrack) {
       feedEngine(mixState.currentTrack);
     }
-  }, [mixState?.status, mixState?.currentTrack?.id, mixState?.nextTrack, feedEngine]);
+  }, [mixState?.status, mixState?.currentTrack?.id, mixState?.nextTrack, queue.length, feedEngine]);
 
   function handleTrackUpdated(updatedTrack: Track) {
     setQueue(q => q.map(t => t.id === updatedTrack.id ? updatedTrack : t));
@@ -130,6 +131,15 @@ function App() {
     });
   }
 
+  function handleStop() {
+    mixEngineRef.current?.stop();
+  }
+
+  function handleReset() {
+    mixEngineRef.current?.stop();
+    setQueue([]);
+  }
+
   const nextTransitionScore =
     queue.length >= 2 ? calculateTransitionScore(queue[0], queue[1]) : null;
 
@@ -145,6 +155,8 @@ function App() {
         onSkip={() => mixEngineRef.current?.skip()}
         onStartAutomix={handleStartAutomix}
         onSeek={(t) => mixEngineRef.current?.seek(t)}
+        onStop={handleStop}
+        onReset={handleReset}
       />
 
       <div className="main-bottom">

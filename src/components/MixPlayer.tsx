@@ -116,6 +116,8 @@ type MixPlayerProps = {
     onSkip: () => void;
     onStartAutomix: () => void;
     onSeek: (time: number) => void;
+    onStop: () => void;
+    onReset: () => void;
 };
 
 export default function MixPlayer({
@@ -125,6 +127,8 @@ export default function MixPlayer({
     onSkip,
     onStartAutomix,
     onSeek,
+    onStop,
+    onReset,
 }: MixPlayerProps) {
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
@@ -207,8 +211,33 @@ export default function MixPlayer({
                     {(isPlaying || status === "paused") && next && (
                         <button className="mix-btn mix-btn-skip" onClick={onSkip} title="Sofort zum nächsten Track">⏭</button>
                     )}
+                    {(isPlaying || status === "paused") && (
+                        <button className="mix-btn mix-btn-stop" onClick={onStop} title="Stopp">■</button>
+                    )}
+                    {(isPlaying || status === "paused") && (
+                        <button className="mix-btn mix-btn-reset" onClick={onReset} title="Reset + Queue leeren">↺</button>
+                    )}
                 </div>
             </div>
+
+            {current && curDur > 0 && (
+                <div
+                    className="mix-seekbar"
+                    onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                        onSeek(ratio * curDur);
+                    }}
+                >
+                    <div className="mix-seekbar-fill" style={{ width: `${(curTime / curDur) * 100}%` }} />
+                    {plan && (
+                        <div
+                            className="mix-seekbar-marker"
+                            style={{ left: `${(plan.outroStartSeconds / curDur) * 100}%` }}
+                        />
+                    )}
+                </div>
+            )}
 
             {dispA && (
                 <div className="mix-waveform-wrap">
