@@ -1475,3 +1475,113 @@ body {
   font-weight: 700;
 }
 
+/* Transition Point Badges (unter Trackname) */
+.transition-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.transition-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.transition-badge-auto {
+  opacity: 0.6;
+}
+
+/* Mix-Punkte Menü-Button */
+.transition-menu-btn {
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 5px;
+  font-size: 12px;
+  color: #94a3b8;
+  transition: background 0.15s;
+}
+
+.transition-menu-btn:hover,
+.transition-menu-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+
+/* Menü-Panel (klappt unter der Track-Row auf) */
+.transition-menu-panel {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.transition-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 200px;
+}
+
+.transition-menu-section strong {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.transition-menu-empty {
+  font-size: 11px;
+  color: #475569;
+}
+
+.transition-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transition-menu-time {
+  font-size: 11px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+}
+
+.transition-menu-apply {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.transition-menu-apply:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.transition-menu-remove {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  cursor: pointer;
+}
+

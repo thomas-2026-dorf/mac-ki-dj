@@ -25,6 +25,17 @@ export type TrackLoop = {
     purpose: "transition" | "outro-builder" | "emergency";
 };
 
+export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage";
+
+export type TransitionPoint = {
+    id: string;
+    role: TransitionPointRole;
+    bars: 8 | 16 | 32 | null; // null = cut (kein Loop)
+    timeSeconds: number;
+    source: "auto" | "manual";
+    label?: string;
+};
+
 export type TrackExternalAnalysis = {
     source: "mixed-in-key" | "manual" | "other";
     importedAt?: string;
@@ -120,6 +131,7 @@ export type Track = {
 
     cuePoints?: TrackCuePoint[];
     loops?: TrackLoop[];
+    transitionPoints?: TransitionPoint[];
 
     analysis?: TrackAnalysis;
 };

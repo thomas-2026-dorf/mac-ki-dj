@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { demoTracks } from "../data/demoTracks";
 import { calculateTransitionScore } from "../modules/transition/transitionScore";
+import { suggestTransitionPoints, formatTransitionTime, ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
 import type { Track } from "../types/track";
@@ -102,6 +103,7 @@ export default function TrackList({
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [editFields, setEditFields] = useState<EditFields | null>(null);
     const [analysisDebugMessage, setAnalysisDebugMessage] = useState<string>("");
+    const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -265,6 +267,13 @@ export default function TrackList({
     function clearSelection() {
         setSelectedTrackId(null);
         setEditFields(null);
+    }
+
+    function parseDurationToSeconds(dur: string): number {
+        const p = dur.split(":").map(Number);
+        if (p.length === 2) return (p[0] ?? 0) * 60 + (p[1] ?? 0);
+        if (p.length === 3) return (p[0] ?? 0) * 3600 + (p[1] ?? 0) * 60 + (p[2] ?? 0);
+        return 0;
     }
 
     const filteredTracks = list
@@ -464,114 +473,115 @@ export default function TrackList({
                             ? "rgba(234, 179, 8, 0.15)" // leicht gelb
                             : undefined;
 
+                const points = (track.transitionPoints?.length ?? 0) > 0
+                    ? track.transitionPoints!
+                    : suggestTransitionPoints(track);
+                const totalSeconds = parseDurationToSeconds(track.duration);
+
                 return (
                     <div
                         className="track-row"
                         key={track.id}
-                        onClick={() => {
-                            setSelectedTrackId(track.id);
-                            onTrackSelected?.(track);
-                        }}
+                        onClick={() => { setSelectedTrackId(track.id); onTrackSelected?.(track); }}
                         onDoubleClick={() => onLoadA(track)}
-                        title={
-                            transitionScore
-                                ? `Automix-Score: ${transitionScore.score} - ${transitionScore.label}`
-                                : "Doppelklick fügt den Song zu Automix hinzu"
-                        }
+                        title={transitionScore ? `Automix-Score: ${transitionScore.score} - ${transitionScore.label}` : "Doppelklick fügt den Song zu Automix hinzu"}
                         style={{
                             backgroundColor,
-                            outline:
-                                selectedTrackId === track.id
-                                    ? "2px solid rgba(56, 189, 248, 0.8)"
-                                    : "none",
+                            outline: selectedTrackId === track.id ? "2px solid rgba(56, 189, 248, 0.8)" : "none",
                             cursor: "pointer",
                         }}
                     >
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectTrack(track);
-                                }}
-                                style={{
-                                    background: "transparent",
-                                    border: "1px solid rgba(255,255,255,0.2)",
-                                    borderRadius: "4px",
-                                    cursor: "pointer",
-                                    padding: "2px 6px",
-                                    color: "#cbd5f5"
-                                }}
-                                title="Bearbeiten"
-                            >
-                                ✏️
-                            </button>
-                            <strong>{track.title}</strong>
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
+                        {/* Titel-Spalte */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); selectTrack(track); }}
+                                    style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#cbd5f5" }}
+                                    title="Bearbeiten"
+                                >
+                                    ✏️
+                                </button>
+                                <strong>{track.title}</strong>
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!track.url) { setAnalysisDebugMessage("Kein Datei-Pfad vorhanden."); return; }
+                                        setAnalysisDebugMessage("Analyse gestartet...");
+                                        const analysisResult = await prepareTrackAnalysis(track.url);
+                                        if (analysisResult.success && analysisResult.analysis) {
+                                            const a = analysisResult.analysis;
+                                            const r = analysisResult.rustAnalysis;
+                                            const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
+                                            const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
+                                            const updatedTrack: Track = {
+                                                ...track,
+                                                bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
+                                                key: a.camelotKey || a.key || track.key,
+                                                energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
+                                                analysis: {
+                                                    ...(track.analysis ?? { cuePoints: [], loops: [] }),
+                                                    status: "done", waveform: a.waveform, detectedBpm: floatBpm,
+                                                    beatGridStartSeconds: gridStart, beats: r?.beats,
+                                                    bpmConfidence: a.bpmConfidence, bpmSource: "auto",
+                                                    cuePoints: track.analysis?.cuePoints ?? [],
+                                                    loops: track.analysis?.loops ?? [],
+                                                },
+                                            };
+                                            const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+                                            setTracks(updatedTracks);
+                                            saveLibrary(updatedTracks, musicFolder);
+                                            onTrackUpdated?.(updatedTrack);
+                                            setAnalysisDebugMessage((analysisResult.cached ? "Cache: " : "Neu: ") + `BPM ${updatedTrack.bpm} · Key ${updatedTrack.key} · Energy ${updatedTrack.energy}`);
+                                        } else {
+                                            setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
+                                        }
+                                    }}
+                                    style={{ marginLeft: "2px", background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#86efac" }}
+                                    title="Track analysieren"
+                                >
+                                    ⚡
+                                </button>
+                            </div>
 
-                                    if (!track.url) {
-                                        setAnalysisDebugMessage("Kein Datei-Pfad vorhanden.");
-                                        return;
-                                    }
-
-                                    setAnalysisDebugMessage("Analyse gestartet...");
-                                    const analysisResult = await prepareTrackAnalysis(track.url);
-
-                                    if (analysisResult.success && analysisResult.analysis) {
-                                        const a = analysisResult.analysis;
-                                        const r = analysisResult.rustAnalysis;
-
-                                        // Float-BPM: Stratum > Aubio > JS (in dieser Reihenfolge)
-                                        const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
-                                        // Downbeat (Bar-Start): Stratum-Downbeat > Aubio-Grid > JS-Onset
-                                        const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
-
-                                        const updatedTrack: Track = {
-                                            ...track,
-                                            bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
-                                            key: a.camelotKey || a.key || track.key,
-                                            energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
-                                            analysis: {
-                                                ...(track.analysis ?? { cuePoints: [], loops: [] }),
-                                                status: "done",
-                                                waveform: a.waveform,
-                                                detectedBpm: floatBpm,
-                                                beatGridStartSeconds: gridStart,
-                                                beats: r?.beats,
-                                                bpmConfidence: a.bpmConfidence,
-                                                bpmSource: "auto",
-                                                cuePoints: track.analysis?.cuePoints ?? [],
-                                                loops: track.analysis?.loops ?? [],
-                                            },
-                                        };
-                                        const updatedTracks = tracks.map((t) =>
-                                            t.id === updatedTrack.id ? updatedTrack : t
-                                        );
-                                        setTracks(updatedTracks);
-                                        saveLibrary(updatedTracks, musicFolder);
-                                        onTrackUpdated?.(updatedTrack);
-                                        setAnalysisDebugMessage(
-                                            (analysisResult.cached ? "Cache: " : "Neu: ") +
-                                            `BPM ${updatedTrack.bpm} · Key ${updatedTrack.key} · Energy ${updatedTrack.energy}`
-                                        );
-                                    } else {
-                                        setAnalysisDebugMessage("Analyse Fehler: " + analysisResult.error);
-                                    }
-                                }}
-                                style={{
-                                    marginLeft: "6px",
-                                    background: "rgba(34,197,94,0.2)",
-                                    border: "1px solid rgba(34,197,94,0.5)",
-                                    borderRadius: "4px",
-                                    cursor: "pointer",
-                                    padding: "2px 6px",
-                                    color: "#86efac"
-                                }}
-                                title="Track analysieren"
-                            >
-                                ⚡
-                            </button>
+                            {/* Mini-Timeline */}
+                            {points.length > 0 && totalSeconds > 0 && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <div style={{ flex: 1, position: "relative", height: "10px" }}>
+                                        {/* Baseline */}
+                                        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: "1px", background: "rgba(148,163,184,0.2)", transform: "translateY(-50%)" }} />
+                                        {/* Punkte */}
+                                        {points.map(p => {
+                                            const pct = Math.min(97, Math.max(2, (p.timeSeconds / totalSeconds) * 100));
+                                            const c = ROLE_COLORS[p.role];
+                                            const selKey = `${track.id}:${p.id}`;
+                                            const isSel = selectedPointId === selKey;
+                                            return (
+                                                <div
+                                                    key={p.id}
+                                                    onClick={e => { e.stopPropagation(); setSelectedPointId(isSel ? null : selKey); }}
+                                                    title={`${p.label ?? p.role} @ ${formatTransitionTime(p.timeSeconds)}`}
+                                                    style={{
+                                                        position: "absolute", left: `${pct}%`, top: "50%",
+                                                        transform: "translate(-50%, -50%)",
+                                                        width: "8px", height: "8px", borderRadius: "50%",
+                                                        background: c.text,
+                                                        border: isSel ? "2px solid #fff" : "1px solid transparent",
+                                                        boxShadow: isSel ? `0 0 5px ${c.text}` : "none",
+                                                        cursor: "pointer", zIndex: 2,
+                                                    }}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                    {/* Legende */}
+                                    <div style={{ display: "flex", gap: "4px", fontSize: "8px", flexShrink: 0, color: "#475569" }}>
+                                        <span style={{ color: "#fb923c" }}>⬤ Out</span>
+                                        <span style={{ color: "#4ade80" }}>⬤ In</span>
+                                        <span style={{ color: "#f87171" }}>⬤ Cut</span>
+                                        <span style={{ color: "#38bdf8" }}>⬤ Pass</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <span>{track.artist}</span>
