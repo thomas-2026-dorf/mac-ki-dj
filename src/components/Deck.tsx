@@ -165,10 +165,10 @@ export default function Deck({
             .finally(() => setIsLoading(false));
     }, [track]);
 
-    // BPM-Lock wenn Sync aktiv — präziser Float-BPM
+    // BPM-Lock wenn Sync aktiv — Integer-BPM für präzise Rate
     useEffect(() => {
         if (!syncActive || !track || !syncMasterBpm) return;
-        const slaveBpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
+        const slaveBpm = track.bpm ?? 0;
         if (slaveBpm <= 0) return;
         const rate = syncMasterBpm / slaveBpm;
         const limited = Math.max(0.92, Math.min(1.08, rate));
@@ -179,23 +179,25 @@ export default function Deck({
     // Drift-Korrektur via präzisem AudioContext-Takt
     useEffect(() => {
         if (!syncActive || !track || !syncMasterBpm || !isPlaying) return;
-        const slaveBpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
-        if (slaveBpm <= 0) return;
+        const slaveFloatBpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
+        const slaveIntBpm = track.bpm ?? slaveFloatBpm;
+        if (slaveFloatBpm <= 0) return;
 
         const masterBarDur = getBarDuration(syncMasterBpm);
-        const slaveBarDur = getBarDuration(slaveBpm);
+        const slaveBarDur = getBarDuration(slaveFloatBpm);
         const masterGridStart = syncMasterTrack?.analysis?.beatGridStartSeconds ?? 0;
 
         const masterPhase = getPhaseInBar({ time: syncMasterTime, gridStart: masterGridStart, bpm: syncMasterBpm });
         const slaveTime = deckRef.current?.getTime() ?? 0;
-        const slavePhase = getPhaseInBar({ time: slaveTime, gridStart: beatGridStart, bpm: slaveBpm });
+        const slavePhase = getPhaseInBar({ time: slaveTime, gridStart: beatGridStart, bpm: slaveFloatBpm });
 
         // Bruchteil-Vergleich [0,1) — funktioniert korrekt auch bei unterschiedlichen BPMs
         let phaseError = masterPhase / masterBarDur - slavePhase / slaveBarDur;
         if (phaseError > 0.5) phaseError -= 1;
         if (phaseError < -0.5) phaseError += 1;
 
-        const baseRate = Math.max(0.92, Math.min(1.08, syncMasterBpm / slaveBpm));
+        // Integer-BPM für Rate → kein akkumulierter Drift durch Erkennungsungenauigkeit
+        const baseRate = Math.max(0.92, Math.min(1.08, syncMasterBpm / slaveIntBpm));
         const now = Date.now();
 
         if (Math.abs(phaseError) > 0.125 && now - lastSyncSeekRef.current > 500) {
@@ -206,7 +208,7 @@ export default function Deck({
                 masterBpm: syncMasterBpm,
                 masterGridStart,
                 slaveTime,
-                slaveBpm,
+                slaveBpm: slaveFloatBpm,
                 slaveGridStart: beatGridStart,
             });
             if (plan) {
@@ -250,13 +252,14 @@ export default function Deck({
     function handleTempoSync() {
         const deck = deckRef.current;
         if (!deck || !track || !syncMasterTrack || !syncMasterBpm) return;
-        const slaveBpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
+        const slaveIntBpm = track.bpm ?? 0;
+        const slaveFloatBpm = track.analysis?.detectedBpm ?? track.bpm ?? 0;
         const plan = buildDeckSyncPlan({
             masterTime: syncMasterTime,
             masterBpm: syncMasterBpm,
             masterGridStart: syncMasterTrack.analysis?.beatGridStartSeconds ?? 0,
             slaveTime: deck.getTime(),
-            slaveBpm,
+            slaveBpm: slaveIntBpm > 0 ? slaveIntBpm : slaveFloatBpm,
             slaveGridStart: beatGridStart,
         });
         if (!plan) return;

@@ -1,280 +1,194 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import "./App.css";
 import "./layout.css";
 
-import Deck from "./components/Deck";
-import SyncWaveCompare from "./components/SyncWaveCompare";
-import SyncWavePanel from "./components/SyncWavePanel";
-import Crossfader from "./components/Crossfader";
 import TrackList from "./components/TrackList";
-import AiPanel from "./components/AiPanel";
 import QueuePanel from "./components/QueuePanel";
+import MixPlayer from "./components/MixPlayer";
+import AiPanel from "./components/AiPanel";
+
 import { calculateTransitionScore } from "./modules/transition/transitionScore";
+import { planMixTransition } from "./modules/transition/autoMixPlanner";
+import { MixEngine } from "./modules/audio/mixEngine";
+import type { MixState } from "./modules/audio/mixEngine";
 
 import type { Track } from "./types/track";
 
 const QUEUE_STORAGE_KEY = "tk-dj-queue-v1";
 
 function loadSavedQueue(): Track[] {
-  const savedQueue = localStorage.getItem(QUEUE_STORAGE_KEY);
-  if (!savedQueue) return [];
-
-  try {
-    return JSON.parse(savedQueue);
-  } catch {
-    return [];
-  }
+  const saved = localStorage.getItem(QUEUE_STORAGE_KEY);
+  if (!saved) return [];
+  try { return JSON.parse(saved); } catch { return []; }
 }
 
 function App() {
-  const [deckATrack, setDeckATrack] = useState<Track | undefined>();
-  const [deckBTrack, setDeckBTrack] = useState<Track | undefined>();
   const [queue, setQueue] = useState<Track[]>(() => loadSavedQueue());
-  const [_nextDeck, setNextDeck] = useState<"A" | "B">("A");
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-  const [activeDeck, setActiveDeck] = useState<"A" | "B">("A");
-  const [crossfader, setCrossfader] = useState(0.5);
-  const volumeA = 1 - crossfader;
-  const volumeB = crossfader;
+  const [mixState, setMixState] = useState<MixState | null>(null);
 
-  const [deckATime, setDeckATime] = useState({ time: 0, duration: 0 });
-  const [deckBTime, setDeckBTime] = useState({ time: 0, duration: 0 });
-  const [deckASeekTo, setDeckASeekTo] = useState<number | null>(null);
-  const [deckBSeekTo, setDeckBSeekTo] = useState<number | null>(null);
+  const mixEngineRef = useRef<MixEngine | null>(null);
+  const queueRef = useRef<Track[]>(queue);
 
-  // Automix Referenz (wichtig für spätere Bewertung)
-  const automixReferenceTrack = queue.length > 0 ? queue[0] : null;
-
-  const deckTransitionScore =
-    deckATrack && deckBTrack
-      ? calculateTransitionScore(deckATrack, deckBTrack)
-      : null;
-
-  const automixTransitionScore =
-    queue.length >= 2
-      ? calculateTransitionScore(queue[0], queue[1])
-      : null;
+  useEffect(() => { queueRef.current = queue; }, [queue]);
 
   useEffect(() => {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   }, [queue]);
 
+  const feedEngine = useCallback((currentTrack: Track) => {
+    const engine = mixEngineRef.current;
+    if (!engine) return;
+    const q = queueRef.current;
+    if (q.length === 0) return;
+
+    const [next, ...rest] = q;
+    queueRef.current = rest;
+    setQueue(rest);
+    const plan = planMixTransition(currentTrack, next);
+    engine.prepareNext(next, plan);
+  }, []);
+
+  useEffect(() => {
+    const engine = new MixEngine();
+    engine.onStateChange(setMixState);
+
+    engine.onTransition((_prev, nextTrack) => {
+      feedEngine(nextTrack);
+    });
+
+    engine.onQueueEmpty(() => {
+      const q = queueRef.current;
+      if (q.length === 0) return;
+      const [first, ...rest] = q;
+      queueRef.current = rest;
+      setQueue(rest);
+      engine.loadAndPlay(first).then(() => feedEngine(first));
+    });
+
+    mixEngineRef.current = engine;
+    return () => engine.destroy();
+  }, [feedEngine]);
+
   function handleTrackUpdated(updatedTrack: Track) {
-    setDeckATrack((current) =>
-      current?.id === updatedTrack.id ? updatedTrack : current,
-    );
-
-    setDeckBTrack((current) =>
-      current?.id === updatedTrack.id ? updatedTrack : current,
-    );
-
-    setQueue((currentQueue) =>
-      currentQueue.map((track) =>
-        track.id === updatedTrack.id ? updatedTrack : track,
-      ),
-    );
+    setQueue(q => q.map(t => t.id === updatedTrack.id ? updatedTrack : t));
   }
 
-  function clearQueue() {
-    setQueue([]);
+  function addTrackToQueue(track: Track) {
+    const engine = mixEngineRef.current;
+    const state = engine?.getState();
+
+    if (!state || state.status === "idle") {
+      engine?.loadAndPlay(track).then(() => {
+        const q = queueRef.current;
+        if (q.length > 0) {
+          const [next, ...rest] = q;
+          queueRef.current = rest;
+          setQueue(rest);
+          const plan = planMixTransition(track, next);
+          engine?.prepareNext(next, plan);
+        }
+      });
+    } else if (state.currentTrack && !state.nextTrack) {
+      const plan = planMixTransition(state.currentTrack, track);
+      engine!.prepareNext(track, plan);
+    } else {
+      setQueue(prev => [...prev, track]);
+    }
   }
+
+  function handleStartAutomix() {
+    const engine = mixEngineRef.current;
+    const state = engine?.getState();
+    if (!engine || (state && state.status !== "idle")) return;
+
+    const q = queueRef.current;
+    if (q.length === 0) return;
+
+    const [first, second, ...rest] = q;
+    queueRef.current = second ? rest : [];
+    setQueue(second ? rest : []);
+
+    engine.loadAndPlay(first).then(() => {
+      if (second) {
+        const plan = planMixTransition(first, second);
+        engine.prepareNext(second, plan);
+      }
+    });
+  }
+
+  function clearQueue() { setQueue([]); }
 
   function removeFromQueue(trackId: string) {
-    setQueue((prev) => prev.filter((t) => t.id !== trackId));
+    setQueue(prev => prev.filter(t => t.id !== trackId));
   }
 
   function moveUp(index: number) {
-    setQueue((prev) => {
+    setQueue(prev => {
       if (index === 0) return prev;
-      const newQueue = [...prev];
-      [newQueue[index - 1], newQueue[index]] = [
-        newQueue[index],
-        newQueue[index - 1],
-      ];
-      return newQueue;
+      const q = [...prev];
+      [q[index - 1], q[index]] = [q[index], q[index - 1]];
+      return q;
     });
   }
 
   function moveDown(index: number) {
-    setQueue((prev) => {
+    setQueue(prev => {
       if (index === prev.length - 1) return prev;
-      const newQueue = [...prev];
-      [newQueue[index], newQueue[index + 1]] = [
-        newQueue[index + 1],
-        newQueue[index],
-      ];
-      return newQueue;
+      const q = [...prev];
+      [q[index], q[index + 1]] = [q[index + 1], q[index]];
+      return q;
     });
   }
 
-  function addTrackToQueue(track: Track) {
-    setQueue((prev) => [...prev, track]);
-  }
+  const nextTransitionScore =
+    queue.length >= 2 ? calculateTransitionScore(queue[0], queue[1]) : null;
 
-  function autoLoadFreeDeck() {
-    if (queue.length === 0) return;
-    if (deckATrack && deckBTrack) return;
-
-    const [nextTrack, ...remainingQueue] = queue;
-
-    // Automix-Start: Wenn beide Decks leer sind, zuerst Deck A laden
-    // und den zweiten Automix-Song direkt in Deck B vorbereiten.
-    if (!deckATrack && !deckBTrack) {
-      const [secondTrack, ...restQueue] = remainingQueue;
-
-      setDeckATrack(nextTrack);
-      setActiveDeck("A");
-      setNextDeck("B");
-
-      if (secondTrack) {
-        setDeckBTrack(secondTrack);
-        setQueue(restQueue);
-      } else {
-        setQueue(remainingQueue);
-      }
-
-      return;
-    }
-
-    // Wenn ein Deck läuft/geladen ist, den nächsten Song ins freie Gegendeck laden.
-    if (!deckBTrack && activeDeck === "A") {
-      setDeckBTrack(nextTrack);
-      setNextDeck("A");
-    } else if (!deckATrack && activeDeck === "B") {
-      setDeckATrack(nextTrack);
-      setNextDeck("B");
-    } else if (!deckATrack) {
-      setDeckATrack(nextTrack);
-      setNextDeck("B");
-    } else if (!deckBTrack) {
-      setDeckBTrack(nextTrack);
-      setNextDeck("A");
-    }
-
-    setQueue(remainingQueue);
-  }
-
+  const referenceTrack = mixState?.currentTrack ?? (queue.length > 0 ? queue[0] : null);
+  const isRunning = mixState?.status === "playing" || mixState?.status === "transitioning";
 
   return (
     <div className="app">
-      <div className="sync-waves">
-        <SyncWavePanel deck="A" track={deckATrack} time={deckATime.time} duration={deckATime.duration} onSeek={setDeckASeekTo} />
-        <SyncWavePanel deck="B" track={deckBTrack} time={deckBTime.time} duration={deckBTime.duration} onSeek={setDeckBSeekTo} />
-      </div>
-
-  <SyncWaveCompare
-    trackA={deckATrack}
-    trackB={deckBTrack}
-    timeA={deckATime.time}
-    timeB={deckBTime.time}
-    durationA={deckATime.duration}
-    durationB={deckBTime.duration}
-  />
-
-      <div className="top">
-        <Deck
-          title="Deck A"
-          track={deckATrack}
-          isActive={activeDeck === "A"}
-          onActivate={() => setActiveDeck("A")}
-          onPlay={() => { }}
-          syncMasterBpm={activeDeck === "B" ? (deckBTrack?.analysis?.detectedBpm ?? deckBTrack?.bpm) || null : null}
-          syncMasterTrack={activeDeck === "B" ? deckBTrack : undefined}
-          syncMasterTime={activeDeck === "B" ? deckBTime.time : 0}
-          onTimeUpdateGlobal={(time, duration) => setDeckATime({ time, duration })}
-          seekToTime={deckASeekTo}
-          volume={volumeA}
-          onLoad={() => {
-            if (selectedTrack) setDeckATrack(selectedTrack);
-          }}
-          onEject={() => setDeckATrack(undefined)}
-        />
-
-        <Crossfader
-          onActiveDeckChange={setActiveDeck}
-          onChange={setCrossfader}
-          bpmA={deckATrack?.bpm}
-          bpmB={deckBTrack?.bpm}
-        />
-
-        <div style={{ display: "none" }} aria-hidden="true">
-          Volume A: {volumeA.toFixed(2)} | Volume B: {volumeB.toFixed(2)}
-        </div>
-
-        <Deck
-          title="Deck B"
-          track={deckBTrack}
-          isActive={activeDeck === "B"}
-          onActivate={() => setActiveDeck("B")}
-          onPlay={() => { }}
-          syncMasterBpm={activeDeck === "A" ? (deckATrack?.analysis?.detectedBpm ?? deckATrack?.bpm) || null : null}
-          syncMasterTrack={activeDeck === "A" ? deckATrack : undefined}
-          syncMasterTime={activeDeck === "A" ? deckATime.time : 0}
-          onTimeUpdateGlobal={(time, duration) => setDeckBTime({ time, duration })}
-          seekToTime={deckBSeekTo}
-          volume={volumeB}
-          onLoad={() => {
-            if (selectedTrack) setDeckBTrack(selectedTrack);
-          }}
-          onEject={() => setDeckBTrack(undefined)}
-        />
-      </div>
+      <MixPlayer
+        state={mixState}
+        onPlay={() => mixEngineRef.current?.resume()}
+        onPause={() => mixEngineRef.current?.pause()}
+        onSkip={() => mixEngineRef.current?.skip()}
+        onStartAutomix={handleStartAutomix}
+      />
 
       <div className="main-bottom">
         <TrackList
           onLoadA={addTrackToQueue}
-          onTrackSelected={setSelectedTrack}
+          onTrackSelected={() => {}}
           onTrackUpdated={handleTrackUpdated}
-          referenceTrack={automixReferenceTrack}
+          referenceTrack={referenceTrack}
         />
 
         <div className="right-panel">
-          <div className="transition-score-box">
-            {queue.length >= 2 && automixTransitionScore ? (
-              <>
-                <strong>Automix: {queue[0].title} → {queue[1].title}</strong>
-                <span>
-                  {automixTransitionScore.label} ({automixTransitionScore.score})
-                </span>
-                <small>{automixTransitionScore.reasons[0]}</small>
-              </>
-            ) : queue.length === 1 ? (
-              <>
-                <strong>Automix-Start</strong>
-                <span>{queue[0].title}</span>
-                <small>Füge weitere Songs hinzu, dann bewertet TK-DJ den nächsten Übergang.</small>
-              </>
-            ) : deckTransitionScore ? (
-              <>
-                <strong>Übergang A → B</strong>
-                <span>
-                  {deckTransitionScore.label} ({deckTransitionScore.score})
-                </span>
-                <small>{deckTransitionScore.reasons[0]}</small>
-              </>
-            ) : (
-              <>
-                <strong>Übergang</strong>
-                <span>Automix oder 2 Decks laden</span>
-                <small>Dann berechnet TK-DJ den ersten Mix-Score.</small>
-              </>
-            )}
-          </div>
+          {nextTransitionScore && queue.length >= 2 && (
+            <div className="transition-score-box">
+              <strong>{queue[0].title} → {queue[1].title}</strong>
+              <span>{nextTransitionScore.label} ({nextTransitionScore.score})</span>
+              <small>{nextTransitionScore.reasons[0]}</small>
+            </div>
+          )}
 
           <div className="queue-actions">
             <button
               className="automix-button"
-              onClick={autoLoadFreeDeck}
-              disabled={queue.length === 0 || (!!deckATrack && !!deckBTrack)}
+              onClick={handleStartAutomix}
+              disabled={queue.length === 0 || isRunning}
             >
-              Automix
+              Automix starten
             </button>
-
-            <button className="automix-clear-button" onClick={clearQueue} disabled={queue.length === 0}>
-              Automix leeren
+            <button
+              className="automix-clear-button"
+              onClick={clearQueue}
+              disabled={queue.length === 0}
+            >
+              Queue leeren
             </button>
           </div>
-
 
           <QueuePanel
             queue={queue}
