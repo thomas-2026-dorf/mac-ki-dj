@@ -8,7 +8,7 @@ import MixPlayer from "./components/MixPlayer";
 import AiPanel from "./components/AiPanel";
 
 import { calculateTransitionScore } from "./modules/transition/transitionScore";
-import { planMixTransition } from "./modules/transition/autoMixPlanner";
+import { planMixTransition, decideTransition } from "./modules/transition/autoMixPlanner";
 import { MixEngine } from "./modules/audio/mixEngine";
 import type { MixState } from "./modules/audio/mixEngine";
 import { loadAnalysisCache } from "./modules/analysis/analysisCache";
@@ -21,6 +21,12 @@ function loadSavedQueue(): Track[] {
   const saved = localStorage.getItem(QUEUE_STORAGE_KEY);
   if (!saved) return [];
   try { return JSON.parse(saved); } catch { return []; }
+}
+
+function makePlan(a: Track, b: Track) {
+  const plan = planMixTransition(a, b);
+  const decision = decideTransition(a, b);
+  return { ...plan, outroStartSeconds: decision.transitionStartTime };
 }
 
 function App() {
@@ -53,7 +59,7 @@ function App() {
     const [next, ...rest] = q;
     queueRef.current = rest;
     setQueue(rest);
-    const plan = planMixTransition(currentTrack, next);
+    const plan = makePlan(currentTrack, next);
     engine.prepareNext(next, plan);
   }, []);
 
@@ -171,7 +177,7 @@ function App() {
 
     engine.loadAndPlay(first).then(() => {
       if (second) {
-        const plan = planMixTransition(first, second);
+        const plan = makePlan(first, second);
         engine.prepareNext(second, plan);
       }
     });
@@ -225,7 +231,7 @@ function App() {
       addTrackToQueue(track);
       return;
     }
-    const plan = planMixTransition(current, track);
+    const plan = makePlan(current, track);
     engine.prepareNext(track, plan);
   }
 

@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
+import { decideTransition } from "../modules/transition/autoMixPlanner";
 import type { TransitionPoint } from "../types/track";
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import PlayerWaveform from "./PlayerWaveform";
@@ -67,6 +69,21 @@ export default function MixPlayer({
 
     const waveA = current?.analysis?.waveform ?? [];
     const waveB = next?.analysis?.waveform ?? [];
+
+    useEffect(() => {
+        if (!current || !next) return;
+        const decision = decideTransition(current, next);
+        const bpmDiff = current.bpm > 0 && next.bpm > 0
+            ? Math.abs(current.bpm - next.bpm).toFixed(1)
+            : "?";
+        console.group(`[decideTransition] ${current.title} → ${next.title}`);
+        console.log("transitionType    :", decision.transitionType);
+        console.log("transitionStartTime:", decision.transitionStartTime.toFixed(1), "s");
+        console.log("BPM A / B         :", current.bpm, "/", next.bpm, "  Diff:", bpmDiff);
+        console.log("Energy A / B      :", current.energy, "/", next.energy);
+        console.groupEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [next?.id]);
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
