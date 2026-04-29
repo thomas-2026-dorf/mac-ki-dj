@@ -25,7 +25,7 @@ export type TrackLoop = {
     purpose: "transition" | "outro-builder" | "emergency";
 };
 
-export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage";
+export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage-out" | "passage-in";
 
 export type TransitionPoint = {
     id: string;

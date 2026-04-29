@@ -8,7 +8,7 @@ import { calculateTransitionScore } from "../modules/transition/transitionScore"
 import { suggestTransitionPoints, formatTransitionTime, ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
-import type { Track } from "../types/track";
+import type { Track, TransitionPoint } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
 const TRACK_LIBRARY_STORAGE_KEY = "tk-dj-track-library-v1";
@@ -104,6 +104,7 @@ export default function TrackList({
     const [editFields, setEditFields] = useState<EditFields | null>(null);
     const [analysisDebugMessage, setAnalysisDebugMessage] = useState<string>("");
     const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+    const [suggestMenuTrackId, setSuggestMenuTrackId] = useState<string | null>(null);
 
     function saveLibrary(updatedTracks: Track[], folder: string | null) {
         localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
@@ -267,6 +268,29 @@ export default function TrackList({
     function clearSelection() {
         setSelectedTrackId(null);
         setEditFields(null);
+    }
+
+    function acceptSuggestion(track: Track, point: TransitionPoint) {
+        const existing = track.transitionPoints ?? [];
+        if (existing.some(p => p.id === point.id)) return;
+        const saved: TransitionPoint = { ...point, source: "manual" };
+        const updatedTrack: Track = { ...track, transitionPoints: [...existing, saved] };
+        const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+        setTracks(updatedTracks);
+        saveLibrary(updatedTracks, musicFolder);
+        onTrackUpdated?.(updatedTrack);
+    }
+
+    function removeTransitionPoint(track: Track, pointId: string) {
+        const updatedTrack: Track = {
+            ...track,
+            transitionPoints: (track.transitionPoints ?? []).filter(p => p.id !== pointId),
+        };
+        const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+        setTracks(updatedTracks);
+        saveLibrary(updatedTracks, musicFolder);
+        onTrackUpdated?.(updatedTrack);
+        setSelectedPointId(null);
     }
 
     function parseDurationToSeconds(dur: string): number {
@@ -473,10 +497,12 @@ export default function TrackList({
                             ? "rgba(234, 179, 8, 0.15)" // leicht gelb
                             : undefined;
 
-                const points = (track.transitionPoints?.length ?? 0) > 0
-                    ? track.transitionPoints!
-                    : suggestTransitionPoints(track);
+                const savedPoints = track.transitionPoints ?? [];
                 const totalSeconds = parseDurationToSeconds(track.duration);
+                const suggestions = suggestMenuTrackId === track.id ? suggestTransitionPoints(track) : [];
+                const suggestOut = suggestions.filter(p => p.role === "loop-out" || p.role === "cut-out");
+                const suggestIn = suggestions.filter(p => p.role === "loop-in" || p.role === "cut-in");
+                const suggestPassage = suggestions.filter(p => p.role === "passage-out" || p.role === "passage-in");
 
                 return (
                     <div
@@ -541,16 +567,21 @@ export default function TrackList({
                                 >
                                     ⚡
                                 </button>
+                                <button
+                                    onClick={e => { e.stopPropagation(); setSuggestMenuTrackId(suggestMenuTrackId === track.id ? null : track.id); }}
+                                    style={{ marginLeft: "2px", background: suggestMenuTrackId === track.id ? "rgba(56,189,248,0.25)" : "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.4)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#38bdf8" }}
+                                    title="Übergangspunkte Vorschläge"
+                                >
+                                    🎛
+                                </button>
                             </div>
 
-                            {/* Mini-Timeline */}
-                            {points.length > 0 && totalSeconds > 0 && (
+                            {/* Mini-Timeline: nur gespeicherte/manuell bestätigte Punkte */}
+                            {savedPoints.length > 0 && totalSeconds > 0 && (
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                     <div style={{ flex: 1, position: "relative", height: "10px" }}>
-                                        {/* Baseline */}
                                         <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: "1px", background: "rgba(148,163,184,0.2)", transform: "translateY(-50%)" }} />
-                                        {/* Punkte */}
-                                        {points.map(p => {
+                                        {savedPoints.map(p => {
                                             const pct = Math.min(97, Math.max(2, (p.timeSeconds / totalSeconds) * 100));
                                             const c = ROLE_COLORS[p.role];
                                             const selKey = `${track.id}:${p.id}`;
@@ -558,30 +589,95 @@ export default function TrackList({
                                             return (
                                                 <div
                                                     key={p.id}
-                                                    onClick={e => { e.stopPropagation(); setSelectedPointId(isSel ? null : selKey); }}
-                                                    title={`${p.label ?? p.role} @ ${formatTransitionTime(p.timeSeconds)}`}
+                                                    onClick={e => {
+                                                        e.stopPropagation();
+                                                        if (isSel) {
+                                                            removeTransitionPoint(track, p.id);
+                                                        } else {
+                                                            setSelectedPointId(selKey);
+                                                        }
+                                                    }}
+                                                    title={isSel ? `${p.label ?? p.role} — nochmal klicken zum Entfernen` : `${p.label ?? p.role} @ ${formatTransitionTime(p.timeSeconds)}`}
                                                     style={{
                                                         position: "absolute", left: `${pct}%`, top: "50%",
                                                         transform: "translate(-50%, -50%)",
                                                         width: "8px", height: "8px", borderRadius: "50%",
-                                                        background: c.text,
-                                                        border: isSel ? "2px solid #fff" : "1px solid transparent",
-                                                        boxShadow: isSel ? `0 0 5px ${c.text}` : "none",
+                                                        background: isSel ? "#fff" : c.text,
+                                                        border: isSel ? `2px solid ${c.text}` : "1px solid transparent",
+                                                        boxShadow: isSel ? `0 0 6px ${c.text}` : "none",
                                                         cursor: "pointer", zIndex: 2,
                                                     }}
                                                 />
                                             );
                                         })}
                                     </div>
-                                    {/* Legende */}
                                     <div style={{ display: "flex", gap: "4px", fontSize: "8px", flexShrink: 0, color: "#475569" }}>
                                         <span style={{ color: "#fb923c" }}>⬤ Out</span>
                                         <span style={{ color: "#4ade80" }}>⬤ In</span>
                                         <span style={{ color: "#f87171" }}>⬤ Cut</span>
-                                        <span style={{ color: "#38bdf8" }}>⬤ Pass</span>
+                                        <span style={{ color: "#60a5fa" }}>⬤ Pass</span>
                                     </div>
                                 </div>
                             )}
+
+                            {/* Vorschlag-Menü: nur sichtbar wenn 🎛 gedrückt */}
+                            {suggestMenuTrackId === track.id && (() => {
+                                const renderGroup = (label: string, pts: typeof suggestions) => {
+                                    if (pts.length === 0) return null;
+                                    return (
+                                        <div style={{ marginBottom: "5px" }}>
+                                            <span style={{ fontSize: "9px", color: "#64748b", display: "block", marginBottom: "3px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                                                {pts.map(p => {
+                                                    const alreadySaved = savedPoints.some(sp => sp.id === p.id);
+                                                    const c = ROLE_COLORS[p.role];
+                                                    return (
+                                                        <button
+                                                            key={p.id}
+                                                            disabled={alreadySaved}
+                                                            onClick={e => { e.stopPropagation(); acceptSuggestion(track, p); }}
+                                                            title={`${p.label} @ ${formatTransitionTime(p.timeSeconds)}`}
+                                                            style={{
+                                                                background: alreadySaved ? "rgba(255,255,255,0.04)" : c.bg,
+                                                                border: `1px solid ${alreadySaved ? "rgba(255,255,255,0.1)" : c.border}`,
+                                                                borderRadius: "4px",
+                                                                color: alreadySaved ? "#334155" : c.text,
+                                                                padding: "2px 7px",
+                                                                fontSize: "10px",
+                                                                cursor: alreadySaved ? "default" : "pointer",
+                                                            }}
+                                                        >
+                                                            {alreadySaved ? "✓ " : ""}{p.label} · {formatTransitionTime(p.timeSeconds)}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                };
+                                return (
+                                    <div
+                                        onClick={e => e.stopPropagation()}
+                                        style={{ marginTop: "4px", padding: "6px 8px", background: "rgba(15,23,42,0.9)", border: "1px solid rgba(56,189,248,0.3)", borderRadius: "6px" }}
+                                    >
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+                                            <span style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Vorschläge — Klick = Übernehmen</span>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); setSuggestMenuTrackId(null); }}
+                                                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: "11px", padding: "0 2px" }}
+                                            >✕</button>
+                                        </div>
+                                        {suggestions.length === 0
+                                            ? <span style={{ fontSize: "10px", color: "#475569" }}>Keine Vorschläge (BPM fehlt?)</span>
+                                            : <>
+                                                {renderGroup("OUT", suggestOut)}
+                                                {renderGroup("IN", suggestIn)}
+                                                {renderGroup("PASSAGE", suggestPassage)}
+                                            </>
+                                        }
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <span>{track.artist}</span>
