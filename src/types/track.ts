@@ -60,6 +60,16 @@ export type TrackExternalAnalysis = {
     outroStartSeconds?: number;
 };
 
+export type TrackGridOffset = {
+    offsetSeconds: number;
+    offsetMs: number;
+    stability: "ja" | "nein" | "teilweise";
+    source: "eng" | "wide fallback" | "keine";
+    range: string | null;
+    globalGridStartSeconds?: number;
+    outroOffsetSeconds?: number;
+};
+
 export type TrackAnalysis = {
     status: TrackAnalysisStatus;
     analyzedAt?: string;
@@ -75,6 +85,13 @@ export type TrackAnalysis = {
     beatGridStartSeconds?: number;
     beats?: number[];
     analysisVersion?: string;
+
+    // Essentia-Felder (neue Hauptquelle)
+    durationSeconds?: number;
+    firstBeatSeconds?: number;
+    scale?: string;
+    camelotKey?: string;
+    gridOffset?: TrackGridOffset;
 
     debug?: {
         onsetCount: number;

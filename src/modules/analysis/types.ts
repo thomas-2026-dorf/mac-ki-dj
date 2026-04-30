@@ -37,6 +37,7 @@ export type CuePoint = {
 
 export type AudioAnalysisResult = {
     key?: string;
+    scale?: string;
     camelotKey?: string;
     debug?: {
         onsetCount: number;
@@ -55,6 +56,7 @@ export type AudioAnalysisResult = {
     onsetCount: number;
 
     waveform: number[];
+    beats?: number[];
     cuePoints: CuePoint[];
     beatGridStartSeconds: number;
 };

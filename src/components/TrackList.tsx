@@ -8,8 +8,9 @@ import { calculateTransitionScore } from "../modules/transition/transitionScore"
 import { suggestTransitionPoints, formatTransitionTime, ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
+import { computeGridOffset } from "../modules/analysis/gridOffsetAnalyzer";
 import { runEssentiaTest } from "../modules/analysis/essentiaTest";
-import type { Track, TransitionPoint } from "../types/track";
+import type { Track, TrackGridOffset, TransitionPoint } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
 const TRACK_LIBRARY_STORAGE_KEY = "tk-dj-track-library-v1";
@@ -123,12 +124,39 @@ export default function TrackList({
     // Einzelnen Track analysieren und Library aktualisieren (shared von ⚡ und Batch)
     async function analyzeTrack(track: Track, currentTracks: Track[]): Promise<Track[]> {
         if (!track.url) return currentTracks;
+        console.group(`[Timing] Track: ${track.title}`);
+        const t0total = performance.now();
         const analysisResult = await prepareTrackAnalysis(track.url);
-        if (!analysisResult.success || !analysisResult.analysis) return currentTracks;
+        if (!analysisResult.success || !analysisResult.analysis) {
+            console.groupEnd();
+            return currentTracks;
+        }
         const a = analysisResult.analysis;
-        const r = analysisResult.rustAnalysis;
-        const floatBpm = r?.bpm ?? r?.stratum_bpm ?? a.bpm ?? undefined;
-        const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
+        const floatBpm = a.bpm ?? undefined;
+        const gridStart = a.beatGridStartSeconds as number | undefined;
+        let gridOffset: TrackGridOffset | undefined;
+        if (a.beats && floatBpm && gridStart !== undefined && a.durationSeconds > 0) {
+            const t0go = performance.now();
+            const goResult = computeGridOffset({ beats: a.beats, bpm: floatBpm, gridStart, durationSeconds: a.durationSeconds });
+            console.log(`[Timing] GridOffset Berechnung: ${(performance.now() - t0go).toFixed(0)} ms`);
+            if (goResult.source !== "keine") {
+                gridOffset = {
+                    offsetSeconds: goResult.medianSec,
+                    offsetMs:      goResult.medianMs,
+                    stability:     goResult.stabil,
+                    source:        goResult.source,
+                    range:         goResult.bereich,
+                    ...(goResult.stabil === "ja"
+                        ? { globalGridStartSeconds: goResult.correctedGridStart }
+                        : {}),
+                    ...(goResult.stabil === "teilweise" && goResult.bereich === "nur Outro"
+                        ? { outroOffsetSeconds: goResult.medianSec }
+                        : {}),
+                };
+            }
+        }
+        console.log(`[Timing] Gesamt Track:          ${(performance.now() - t0total).toFixed(0)} ms`);
+        console.groupEnd();
         const updatedTrack: Track = {
             ...track,
             bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
@@ -136,9 +164,20 @@ export default function TrackList({
             energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
             analysis: {
                 ...(track.analysis ?? { cuePoints: [], loops: [] }),
-                status: "done", waveform: a.waveform, detectedBpm: floatBpm,
-                beatGridStartSeconds: gridStart, beats: r?.beats,
-                bpmConfidence: a.bpmConfidence, bpmSource: "auto",
+                status: "done",
+                analysisVersion: "1.0",
+                analyzedAt: new Date().toISOString(),
+                durationSeconds: a.durationSeconds,
+                firstBeatSeconds: gridStart,
+                scale: a.scale,
+                camelotKey: a.camelotKey ?? undefined,
+                gridOffset,
+                waveform: a.waveform,
+                detectedBpm: floatBpm,
+                beatGridStartSeconds: gridStart,
+                beats: a.beats,
+                bpmConfidence: a.bpmConfidence,
+                bpmSource: "auto",
                 cuePoints: track.analysis?.cuePoints ?? [],
                 loops: track.analysis?.loops ?? [],
             },
@@ -150,24 +189,57 @@ export default function TrackList({
     }
 
     async function handleAnalyzeAll() {
-        const toAnalyze = tracks.filter(t => t.url && !(t.analysis?.waveform?.length));
-        if (toAnalyze.length === 0) {
+        const allMissing = tracks.filter(t => t.url && t.analysis?.status !== "done");
+        if (allMissing.length === 0) {
             setAnalysisDebugMessage("Alle Tracks bereits analysiert.");
             return;
         }
-        setBatchProgress({ done: 0, total: toAnalyze.length });
+        setBatchProgress({ done: 0, total: allMissing.length });
         let currentTracks = tracks;
-        const CONCURRENCY = 3;
-        for (let i = 0; i < toAnalyze.length; i += CONCURRENCY) {
-            const batch = toAnalyze.slice(i, i + CONCURRENCY);
-            const results = await Promise.all(batch.map(t => analyzeTrack(t, currentTracks)));
-            // Letztes Ergebnis enthält die aktuellste Track-Liste
-            currentTracks = results[results.length - 1];
-            saveLibrary(currentTracks, musicFolder);
-            setBatchProgress({ done: Math.min(i + CONCURRENCY, toAnalyze.length), total: toAnalyze.length });
+        const times: number[] = [];
+        let analyzed = 0;
+        let errors = 0;
+        const t0total = performance.now();
+
+        for (let i = 0; i < allMissing.length; i++) {
+            const track = allMissing[i];
+            const t0 = performance.now();
+            try {
+                const newTracks = await analyzeTrack(track, currentTracks);
+                if (newTracks !== currentTracks) {
+                    times.push((performance.now() - t0) / 1000);
+                    currentTracks = newTracks;
+                    const t0save = performance.now();
+                    saveLibrary(currentTracks, musicFolder);
+                    console.log(`[Timing] Library speichern:     ${(performance.now() - t0save).toFixed(0)} ms`);
+                    analyzed++;
+                } else {
+                    console.error(`[Analyse] Fehler bei "${track.title}": Analyse fehlgeschlagen`);
+                    errors++;
+                }
+            } catch (err) {
+                console.error(`[Analyse] Fehler bei "${track.title}":`, err);
+                errors++;
+            }
+            setBatchProgress({ done: i + 1, total: allMissing.length });
         }
+
         setBatchProgress(null);
-        setAnalysisDebugMessage(`${toAnalyze.length} Tracks analysiert.`);
+
+        const totalSec = (performance.now() - t0total) / 1000;
+        const avgSec = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+        const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`;
+
+        console.log(`[Analyse] ── Zusammenfassung ──────────────────────────────`);
+        console.log(`[Analyse] Analysiert:    ${analyzed}`);
+        console.log(`[Analyse] Übersprungen:  ${allMissing.length - analyzed - errors}`);
+        console.log(`[Analyse] Fehler:        ${errors}`);
+        console.log(`[Analyse] Zeit pro Track: ${avgSec.toFixed(1)} s`);
+        console.log(`[Analyse] Gesamtzeit:    ${fmtTime(totalSec)}`);
+
+        setAnalysisDebugMessage(
+            `Analysiert: ${analyzed} · Fehler: ${errors} · Zeit/Track: ${avgSec.toFixed(1)} s · Gesamt: ${fmtTime(totalSec)}`
+        );
     }
 
     useEffect(() => {
@@ -616,18 +688,18 @@ export default function TrackList({
                                     onClick={async (e) => {
                                         e.stopPropagation();
                                         if (!track.url) { setAnalysisDebugMessage("Kein Datei-Pfad vorhanden."); return; }
-                                        setAnalysisDebugMessage("Analyse gestartet...");
+                                        setAnalysisDebugMessage("Analyse gestartet…");
                                         const updatedTracks = await analyzeTrack(track, tracks);
                                         saveLibrary(updatedTracks, musicFolder);
                                         const updated = updatedTracks.find(t => t.id === track.id);
-                                        if (updated?.analysis?.waveform?.length) {
+                                        if (updated?.analysis?.status === "done") {
                                             setAnalysisDebugMessage(`BPM ${updated.bpm} · Key ${updated.key} · Energy ${updated.energy}`);
                                         } else {
                                             setAnalysisDebugMessage("Analyse fehlgeschlagen.");
                                         }
                                     }}
                                     style={{ marginLeft: "2px", background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#86efac" }}
-                                    title="Track analysieren"
+                                    title="Track analysieren (Essentia-Pfad)"
                                 >
                                     ⚡
                                 </button>
@@ -647,7 +719,7 @@ export default function TrackList({
                                                 const updatedTrack: Track = {
                                                     ...track,
                                                     analysis: {
-                                                        ...(track.analysis ?? { cuePoints: [], loops: [] }),
+                                                        ...(track.analysis ?? { status: "done" as const, cuePoints: [], loops: [] }),
                                                         beatGridStartSeconds: essentiaResult.firstBeatSeconds,
                                                     },
                                                 };
