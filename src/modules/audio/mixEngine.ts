@@ -221,6 +221,10 @@ export class MixEngine {
         this.emitState();
     }
 
+    setVolume(v: number): void {
+        this.slots.forEach(s => s.audio.setGain(v));
+    }
+
     stop(): void {
         this.stopTick();
         this.prepareGen++;

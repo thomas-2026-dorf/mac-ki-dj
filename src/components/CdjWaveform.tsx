@@ -13,11 +13,13 @@ type Props = {
     onSeek: (time: number) => void;
     bpm?: number;
     beatGridStartSeconds?: number;
+    beats?: number[];
+    metroBeat?: { n: number; t: number } | null;
 };
 
 export default function CdjWaveform({
     trackId, waveform, duration, currentTime, onSeek,
-    bpm, beatGridStartSeconds,
+    bpm, beatGridStartSeconds, beats, metroBeat,
 }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,81 +69,123 @@ export default function CdjWaveform({
         ctx.fillStyle = "#04090f";
         ctx.fillRect(0, 0, W, H);
 
-        // Waveform-Balken
-        if (waveform.length > 0) {
-            let maxVal = 0.001;
-            for (const v of waveform) if (v > maxVal) maxVal = v;
+        // Beat Inspector: 3 Zeilen — BEATS / GRID / METRO
+        const rowH = H / 3;
+        const LABEL_W = 48;
+        const toX = (t: number) => ((t - visibleStart) / windowSec) * W;
 
-            const barW = 2;
-            const gap = 1;
-            const step = barW + gap;
-            const numBars = Math.floor(W / step);
+        // Zeilen-Hintergründe
+        ctx.fillStyle = "#060e18"; ctx.fillRect(0, 0,          W, rowH);
+        ctx.fillStyle = "#04090f"; ctx.fillRect(0, rowH,       W, rowH);
+        ctx.fillStyle = "#060e12"; ctx.fillRect(0, rowH * 2,   W, rowH);
 
-            for (let i = 0; i < numBars; i++) {
-                const barTime = visibleStart + (i / numBars) * windowSec;
+        // Zeilen-Trenner
+        ctx.strokeStyle = "rgba(255,255,255,0.12)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 3; i++) {
+            const ly = Math.round(i * rowH) + 0.5;
+            ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke();
+        }
 
-                let normalized = 0;
-                if (barTime >= 0 && barTime <= duration) {
-                    const idx = Math.min(
-                        waveform.length - 1,
-                        Math.floor((barTime / duration) * waveform.length),
-                    );
-                    normalized = waveform[idx] / maxVal;
-                }
+        // Label-Blöcke links
+        ctx.font = "bold 9px monospace";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(56,189,248,0.18)";  ctx.fillRect(0, 0,        LABEL_W, rowH);
+        ctx.fillStyle = "#38bdf8";                 ctx.fillText("BEATS", 3, rowH * 0.5);
+        ctx.fillStyle = "rgba(255,255,255,0.08)";  ctx.fillRect(0, rowH,     LABEL_W, rowH);
+        ctx.fillStyle = "rgba(255,255,255,0.65)";  ctx.fillText("GRID",  3, rowH * 1.5);
+        ctx.fillStyle = "rgba(74,222,128,0.15)";   ctx.fillRect(0, rowH * 2, LABEL_W, rowH);
+        ctx.fillStyle = "#4ade80";                  ctx.fillText("METRO", 3, rowH * 2.5);
 
-                const barH = Math.max(2, normalized * H);
-                const y = (H - barH) / 2;
-                const played = barTime < centerTime;
-
-                if (played) {
-                    ctx.fillStyle = normalized > 0.65 ? "#ff6b35"
-                        : normalized > 0.30 ? "#e07800"
-                        : "#6b3a10";
-                } else {
-                    ctx.fillStyle = normalized > 0.65 ? "#3b82f6"
-                        : normalized > 0.30 ? "#1e4a7a"
-                        : "#0d2040";
-                }
-                ctx.fillRect(i * step, y, barW, barH);
+        // Zeile 0 — BEATS: erkannte Rohbeats (Referenz, abgeschwächt)
+        if (beats && beats.length > 0) {
+            ctx.strokeStyle = "rgba(150,180,200,0.3)";
+            ctx.lineWidth = 0.5;
+            const vEnd0 = visibleStart + windowSec;
+            for (const t of beats) {
+                if (t < visibleStart - 0.01 || t > vEnd0 + 0.01) continue;
+                const x = Math.round(toX(t)) + 0.5;
+                ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, rowH - 4); ctx.stroke();
             }
         }
 
-        // Beat-Grid-Linien + Beschriftung
+        // Zeilen 1 + 2 — GRID und METRO
         if (bpm && bpm > 0 && beatGridStartSeconds !== undefined) {
             const beatInterval = 60 / bpm;
             const vEnd = visibleStart + windowSec;
             const nMin = Math.floor((visibleStart - beatGridStartSeconds) / beatInterval) - 1;
             const nMax = Math.ceil((vEnd - beatGridStartSeconds) / beatInterval) + 1;
 
-            ctx.lineWidth = 1;
-            ctx.font = "bold 9px monospace";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
-
             for (let n = nMin; n <= nMax; n++) {
                 const t = beatGridStartSeconds + n * beatInterval;
-                if (t < visibleStart - 0.001 || t > vEnd + 0.001 || t < 0) continue;
-                const x = Math.round(((t - visibleStart) / windowSec) * W) + 0.5;
-                const beatInBar = ((n % 4) + 4) % 4; // 0 = Beat 1, 1 = Beat 2, ...
-                const isDownbeat = beatInBar === 0;
+                if (t < visibleStart - 0.01 || t > vEnd + 0.01) continue;
+                const x = Math.round(toX(t)) + 0.5;
+                const beatInBar = ((n % 4) + 4) % 4;
+                const isDown = beatInBar === 0;
 
-                ctx.strokeStyle = isDownbeat
-                    ? "rgba(255,255,255,0.70)"
-                    : beatInBar === 2
-                    ? "rgba(255,255,255,0.35)"
-                    : "rgba(255,255,255,0.18)";
+                // GRID-Zeile: Linie + Zahl 1/2/3/4
+                ctx.strokeStyle = isDown ? "rgba(255,255,255,0.80)" : "rgba(255,255,255,0.28)";
+                ctx.lineWidth = isDown ? 2 : 1;
+                ctx.beginPath(); ctx.moveTo(x, rowH + 4); ctx.lineTo(x, rowH * 2 - 4); ctx.stroke();
+                ctx.font = "bold 9px monospace";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillStyle = isDown ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.28)";
+                ctx.fillText(String(beatInBar + 1), x, rowH + 2);
 
-                ctx.beginPath();
-                ctx.moveTo(x, isDownbeat ? 0 : H * 0.3);
-                ctx.lineTo(x, isDownbeat ? H : H * 0.7);
-                ctx.stroke();
-
-                // Zahl über der Linie
-                ctx.fillStyle = isDownbeat
-                    ? "rgba(255,255,255,0.85)"
-                    : "rgba(255,255,255,0.35)";
-                ctx.fillText(String(beatInBar + 1), x, 2);
+                // METRO-Zeile: Beat 1 grün+groß, 2/3/4 weiß+klein
+                if (isDown) {
+                    ctx.strokeStyle = "#4ade80";
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath(); ctx.moveTo(x, rowH * 2 + 3); ctx.lineTo(x, H - 3); ctx.stroke();
+                } else {
+                    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+                    ctx.lineWidth = 1;
+                    const mid = rowH * 2.5;
+                    ctx.beginPath(); ctx.moveTo(x, mid - 5); ctx.lineTo(x, mid + 5); ctx.stroke();
+                }
             }
+        }
+
+        // Metronom-Flash in METRO-Zeile
+        if (metroBeat && centerTime - metroBeat.t < 0.15) {
+            const fade = 1 - (centerTime - metroBeat.t) / 0.15;
+            const isDown = metroBeat.n % 4 === 0;
+            const cx = Math.round(W / 2);
+            ctx.fillStyle = isDown
+                ? `rgba(74,222,128,${(0.9 * fade).toFixed(2)})`
+                : `rgba(255,255,255,${(0.45 * fade).toFixed(2)})`;
+            ctx.fillRect(cx - 5, rowH * 2, 10, rowH);
+        }
+
+        // Timing-Debug: Werte am Playhead
+        if (bpm && bpm > 0 && beatGridStartSeconds !== undefined) {
+            const iv = 60 / bpm;
+            const steps = Math.ceil((centerTime - beatGridStartSeconds) / iv + 1e-6);
+            const nextGrid = beatGridStartSeconds + steps * iv;
+            const gridInMs = (nextGrid - centerTime) * 1000;
+
+            const nearestBeat = beats && beats.length > 0
+                ? beats.reduce((best, b) => Math.abs(b - nextGrid) < Math.abs(best - nextGrid) ? b : best)
+                : null;
+            const offsetMs = nearestBeat != null ? (nearestBeat - nextGrid) * 1000 : null;
+
+            const fm = (v: number | null, unit = "ms") =>
+                v != null ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}${unit}` : "–";
+
+            const line1 = `t=${centerTime.toFixed(3)}s  |  nGrid=${nextGrid.toFixed(3)}s (in ${fm(gridInMs)})  |  nearestBeat=${nearestBeat?.toFixed(3) ?? "–"}s`;
+            const line2 = `offsetBeatGrid=${fm(offsetMs)}  |  grid=metro  |  BPM ${bpm.toFixed(2)}`;
+
+            ctx.fillStyle = "rgba(0,0,0,0.72)";
+            ctx.fillRect(0, H - 22, W, 22);
+            ctx.font = "9px monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = "rgba(255,255,255,0.75)";
+            ctx.fillText(line1, 4, H - 21);
+            ctx.fillStyle = "rgba(255,255,255,0.5)";
+            ctx.fillText(line2, 4, H - 11);
         }
 
         // Fixe Mittellinie (Playhead-Cursor)
@@ -153,7 +197,7 @@ export default function CdjWaveform({
         ctx.lineTo(cx, H);
         ctx.stroke();
 
-    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds]);
+    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat]);
 
     // ── Maus-Interaktion ─────────────────────────────────────────────────────
 

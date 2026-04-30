@@ -288,6 +288,7 @@ function App() {
         onReset={handleReset}
         onSaveTransitionPoint={handleSaveTransitionPoint}
         onRemoveTransitionPoint={handleRemoveTransitionPoint}
+        onSetVolume={v => mixEngineRef.current?.setVolume(v)}
       />
 
       <div className="main-bottom">

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
 import { decideTransition } from "../modules/transition/autoMixPlanner";
@@ -42,7 +42,9 @@ type MixPlayerProps = {
     onReset: () => void;
     onSaveTransitionPoint?: (point: TransitionPoint) => void;
     onRemoveTransitionPoint?: (pointId: string) => void;
+    onSetVolume?: (v: number) => void;
 };
+
 
 export default function MixPlayer({
     state,
@@ -55,6 +57,7 @@ export default function MixPlayer({
     onReset,
     onSaveTransitionPoint,
     onRemoveTransitionPoint,
+    onSetVolume,
 }: MixPlayerProps) {
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
@@ -84,6 +87,36 @@ export default function MixPlayer({
         console.groupEnd();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [next?.id]);
+
+    const [metroOn, setMetroOn] = useState(false);
+    const [metroBeat, setMetroBeat] = useState<{ n: number; t: number } | null>(null);
+    const audioCtxRef  = useRef<AudioContext | null>(null);
+    const lastBeatNRef = useRef<number>(-1);
+
+    useEffect(() => { lastBeatNRef.current = -1; }, [current?.id, metroOn]);
+
+    useEffect(() => {
+        if (!metroOn || !isPlaying) return;
+        const bpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
+        const gridStart = current?.analysis?.beatGridStartSeconds;
+        if (!bpm || gridStart === undefined) return;
+        const beatN = Math.floor((curTime - gridStart) / (60 / bpm));
+        if (beatN < 0 || beatN === lastBeatNRef.current) return;
+        lastBeatNRef.current = beatN;
+        setMetroBeat({ n: beatN, t: curTime });
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+        const ac = audioCtxRef.current;
+        const osc  = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        const isDown = beatN % 4 === 0;
+        osc.type = "square";
+        osc.frequency.value = isDown ? 1050 : 660;
+        const now = ac.currentTime;
+        gain.gain.setValueAtTime(isDown ? 1.0 : 0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.start(now); osc.stop(now + 0.06);
+    }, [curTime, metroOn, isPlaying, current]);
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
@@ -131,6 +164,17 @@ export default function MixPlayer({
                     {(isPlaying || status === "paused") && (
                         <button className="mix-btn mix-btn-reset" onClick={onReset} title="Reset + Queue leeren">↺</button>
                     )}
+                    <button
+                        onClick={async () => {
+                            if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+                            await audioCtxRef.current.resume();
+                            const next = !metroOn;
+                            onSetVolume?.(next ? 0.25 : 1.0);
+                            setMetroOn(next);
+                        }}
+                        title="Metronom Grid-Debug"
+                        style={{ marginLeft: "8px", background: metroOn ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.05)", border: `1px solid ${metroOn ? "#fbbf24" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: metroOn ? "#fbbf24" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
+                    >♩</button>
                 </div>
             </div>
 
@@ -224,7 +268,10 @@ export default function MixPlayer({
                         onSeek={onSeek}
                         bpm={current.analysis?.detectedBpm ?? current.bpm}
                         beatGridStartSeconds={current.analysis?.beatGridStartSeconds}
+                        beats={current.analysis?.beats}
+                        metroBeat={metroBeat}
                     />
+                    {/* BeatGridDebug ausgeblendet */}
                 </div>
             )}
 

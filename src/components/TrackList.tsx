@@ -127,7 +127,7 @@ export default function TrackList({
         if (!analysisResult.success || !analysisResult.analysis) return currentTracks;
         const a = analysisResult.analysis;
         const r = analysisResult.rustAnalysis;
-        const floatBpm = r?.stratum_bpm ?? r?.bpm ?? a.bpm ?? undefined;
+        const floatBpm = r?.bpm ?? r?.stratum_bpm ?? a.bpm ?? undefined;
         const gridStart = (r?.stratum_downbeats?.[0] ?? r?.grid_start_seconds ?? a.beatGridStartSeconds) as number | undefined;
         const updatedTrack: Track = {
             ...track,
@@ -637,13 +637,28 @@ export default function TrackList({
                                         if (!track.url) return;
                                         setAnalysisDebugMessage("Essentia Test läuft… (Konsole beobachten)");
                                         try {
-                                            await runEssentiaTest(track.url, {
+                                            const essentiaResult = await runEssentiaTest(track.url, {
                                                 bpm: track.bpm,
                                                 detectedBpm: track.analysis?.detectedBpm,
                                                 beatGridStartSeconds: track.analysis?.beatGridStartSeconds,
                                                 key: track.key,
                                             });
-                                            setAnalysisDebugMessage("Essentia Test abgeschlossen – siehe Konsole");
+                                            if (essentiaResult?.firstBeatSeconds !== undefined) {
+                                                const updatedTrack: Track = {
+                                                    ...track,
+                                                    analysis: {
+                                                        ...(track.analysis ?? { cuePoints: [], loops: [] }),
+                                                        beatGridStartSeconds: essentiaResult.firstBeatSeconds,
+                                                    },
+                                                };
+                                                const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+                                                setTracks(updatedTracks);
+                                                saveLibrary(updatedTracks, musicFolder);
+                                                onTrackUpdated?.(updatedTrack);
+                                                setAnalysisDebugMessage(`Essentia GridStart: ${essentiaResult.firstBeatSeconds.toFixed(4)} s – übernommen`);
+                                            } else {
+                                                setAnalysisDebugMessage("Essentia Test abgeschlossen – siehe Konsole");
+                                            }
                                         } catch (err) {
                                             setAnalysisDebugMessage("Essentia Fehler: " + String(err));
                                         }
