@@ -76,3 +76,58 @@ export function getClosestPhaseMatch(input: {
 
     return best;
 }
+
+export interface GridOffsetResult {
+    offsetMs: number;
+    matchCount: number;
+}
+
+export function calculateGridOffsetForWindow(input: {
+    beats: number[];       // Aubio-Rohbeats in Sekunden
+    bpm: number;
+    gridStart: number;     // beatGridStartSeconds
+    fromSec: number;
+    toSec: number;
+    maxOffsetMs?: number;  // Default: 120 ms
+}): GridOffsetResult {
+    const { beats, bpm, gridStart, fromSec, toSec } = input;
+    const maxOffsetMs = input.maxOffsetMs ?? 120;
+    const maxOffsetSec = maxOffsetMs / 1000;
+
+    if (bpm <= 0 || beats.length === 0) return { offsetMs: 0, matchCount: 0 };
+
+    const beatDuration = 60 / bpm;
+
+    // Ersten Grid-Beat-Index im Fenster bestimmen
+    const firstIndex = Math.ceil((fromSec - gridStart) / beatDuration);
+    const lastIndex = Math.floor((toSec - gridStart) / beatDuration);
+
+    let totalOffsetSec = 0;
+    let matchCount = 0;
+
+    for (let i = firstIndex; i <= lastIndex; i++) {
+        const gridBeat = gridStart + i * beatDuration;
+
+        // Nächstgelegenen Aubio-Beat finden
+        let nearestDist = Infinity;
+        let nearestBeat = 0;
+        for (const b of beats) {
+            const dist = Math.abs(b - gridBeat);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestBeat = b;
+            }
+        }
+
+        if (nearestDist <= maxOffsetSec) {
+            // Offset: positiv = Aubio-Beat kommt nach Grid-Beat
+            totalOffsetSec += nearestBeat - gridBeat;
+            matchCount++;
+        }
+    }
+
+    if (matchCount === 0) return { offsetMs: 0, matchCount: 0 };
+
+    const offsetMs = (totalOffsetSec / matchCount) * 1000;
+    return { offsetMs, matchCount };
+}

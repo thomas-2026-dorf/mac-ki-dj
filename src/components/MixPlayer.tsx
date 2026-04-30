@@ -6,6 +6,7 @@ import type { TransitionPoint } from "../types/track";
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import PlayerWaveform from "./PlayerWaveform";
 import CdjWaveform from "./CdjWaveform";
+import { calculateGridOffsetForWindow } from "../modules/audio/beatGrid";
 
 const TYPE_OPTIONS: {
     key: string;
@@ -175,6 +176,50 @@ export default function MixPlayer({
                         title="Metronom Grid-Debug"
                         style={{ marginLeft: "8px", background: metroOn ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.05)", border: `1px solid ${metroOn ? "#fbbf24" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: metroOn ? "#fbbf24" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
                     >♩</button>
+                    <button
+                        onClick={() => {
+                            const beats = current?.analysis?.beats;
+                            const bpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
+                            const gridStart = current?.analysis?.beatGridStartSeconds;
+                            if (!beats || !bpm || gridStart === undefined || curDur <= 0) {
+                                console.warn("[GridOffset] Keine Analyse-Daten für aktuellen Track");
+                                return;
+                            }
+
+                            const outroFrom = curDur - 30;
+                            const outroTo   = curDur;
+
+                            const beatsInOutro = beats.filter(b => b >= outroFrom && b <= outroTo);
+                            const lastBeat = beats[beats.length - 1] ?? null;
+
+                            const beatDuration = 60 / bpm;
+                            const firstGridIdx = Math.ceil((outroFrom - gridStart) / beatDuration);
+                            const lastGridIdx  = Math.floor((outroTo   - gridStart) / beatDuration);
+                            const firstGridBeat = gridStart + firstGridIdx * beatDuration;
+                            const lastGridBeat  = gridStart + lastGridIdx  * beatDuration;
+
+                            console.group(`[GridOffset Debug] ${current?.title}`);
+                            console.log("durationSeconds       :", curDur.toFixed(3));
+                            console.log("outro fromSec / toSec :", outroFrom.toFixed(3), "/", outroTo.toFixed(3));
+                            console.log("beats.length          :", beats.length);
+                            console.log("letzter Beat          :", lastBeat !== null ? lastBeat.toFixed(3) + " s" : "—");
+                            console.log("Beats im Outro-Fenster:", beatsInOutro.length, beatsInOutro.map(b => b.toFixed(2)));
+                            console.log("Grid-Beats im Outro   : Index", firstGridIdx, "→", lastGridIdx,
+                                        "  =", lastGridIdx - firstGridIdx + 1, "Grid-Beats");
+                            console.log("erster Grid-Beat      :", firstGridBeat.toFixed(3), "s");
+                            console.log("letzter Grid-Beat     :", lastGridBeat.toFixed(3), "s");
+                            console.groupEnd();
+
+                            const intro = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: 0, toSec: 30 });
+                            const outro = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: outroFrom, toSec: outroTo });
+                            console.group(`[GridOffset Result] ${current?.title}`);
+                            console.log(`Intro (0–30s):     Offset ${intro.offsetMs.toFixed(1)} ms  |  ${intro.matchCount} Matches`);
+                            console.log(`Outro (letzt 30s): Offset ${outro.offsetMs.toFixed(1)} ms  |  ${outro.matchCount} Matches`);
+                            console.groupEnd();
+                        }}
+                        title="Grid-Offset Intro/Outro messen"
+                        style={{ marginLeft: "4px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "4px", color: "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
+                    >⊡</button>
                 </div>
             </div>
 

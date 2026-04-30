@@ -225,9 +225,11 @@ fn analyze_audio_file(path: String) -> Result<AudioAnalysisBackendResult, String
     };
 
     let beats: Vec<f64> = if use_aubio {
-        aubio_beats.iter().take(200).copied().collect()
+        aubio_beats.clone()
     } else {
-        (0..200)
+        let duration_sec = sample_count as f64 / sample_rate;
+        let count = (duration_sec / beat_interval_seconds).ceil() as usize;
+        (0..count)
             .map(|index| grid_start_seconds + (index as f64 * beat_interval_seconds))
             .collect()
     };
