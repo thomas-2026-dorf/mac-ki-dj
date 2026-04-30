@@ -91,16 +91,22 @@ export default function MixPlayer({
 
     const [metroOn, setMetroOn] = useState(false);
     const [metroBeat, setMetroBeat] = useState<{ n: number; t: number } | null>(null);
+    const [debugGridOffsetSec, setDebugGridOffsetSec] = useState<number | null>(null);
     const audioCtxRef  = useRef<AudioContext | null>(null);
     const lastBeatNRef = useRef<number>(-1);
 
-    useEffect(() => { lastBeatNRef.current = -1; }, [current?.id, metroOn]);
+    useEffect(() => {
+        lastBeatNRef.current = -1;
+        setDebugGridOffsetSec(null);
+    }, [current?.id]);
+    useEffect(() => { lastBeatNRef.current = -1; }, [metroOn]);
 
     useEffect(() => {
         if (!metroOn || !isPlaying) return;
         const bpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
-        const gridStart = current?.analysis?.beatGridStartSeconds;
-        if (!bpm || gridStart === undefined) return;
+        const rawGridStart = current?.analysis?.beatGridStartSeconds;
+        if (!bpm || rawGridStart === undefined) return;
+        const gridStart = debugGridOffsetSec !== null ? rawGridStart + debugGridOffsetSec : rawGridStart;
         const beatN = Math.floor((curTime - gridStart) / (60 / bpm));
         if (beatN < 0 || beatN === lastBeatNRef.current) return;
         lastBeatNRef.current = beatN;
@@ -117,7 +123,7 @@ export default function MixPlayer({
         gain.gain.setValueAtTime(isDown ? 1.0 : 0.6, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
         osc.start(now); osc.stop(now + 0.06);
-    }, [curTime, metroOn, isPlaying, current]);
+    }, [curTime, metroOn, isPlaying, current, debugGridOffsetSec]);
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
@@ -210,15 +216,80 @@ export default function MixPlayer({
                             console.log("letzter Grid-Beat     :", lastGridBeat.toFixed(3), "s");
                             console.groupEnd();
 
-                            const intro = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: 0, toSec: 30 });
-                            const outro = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: outroFrom, toSec: outroTo });
+                            const TOL_ENG   = 120;
+                            const TOL_WIDE  = 400;
+                            const MIN_MATCH = 8;
+                            const MAX_PHASE = 0.45;
+                            const MAX_DRIFT = 80;
+                            const beatMs = (60 / bpm) * 1000;
+
+                            const intro     = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: 0,        toSec: 30,      maxOffsetMs: TOL_ENG  });
+                            const outro     = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: outroFrom, toSec: outroTo, maxOffsetMs: TOL_ENG  });
+                            const introWide = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: 0,        toSec: 30,      maxOffsetMs: TOL_WIDE });
+                            const outroWide = calculateGridOffsetForWindow({ beats, bpm, gridStart, fromSec: outroFrom, toSec: outroTo, maxOffsetMs: TOL_WIDE });
+
+                            // ── Auswertung ────────────────────────────────
+                            type Src    = "eng" | "wide fallback" | "keine";
+                            type Stabil = "ja" | "nein" | "teilweise";
+
+                            const engIntroOk = intro.matchCount >= MIN_MATCH;
+                            const engOutroOk = outro.matchCount >= MIN_MATCH;
+                            const wideOk = (r: typeof intro) =>
+                                r.matchCount >= MIN_MATCH && Math.abs(r.offsetMs) < MAX_PHASE * beatMs;
+                            const wIntroOk = wideOk(introWide);
+                            const wOutroOk = wideOk(outroWide);
+
+                            type Result = { source: Src; stabil: Stabil; bereich: string | null; chosenValues: number[] };
+
+                            function evalWindows(iOk: boolean, oOk: boolean, iMs: number, oMs: number, src: Src): Result {
+                                if (iOk && oOk) {
+                                    const s: Stabil = Math.abs(iMs - oMs) <= MAX_DRIFT ? "ja" : "nein";
+                                    return { source: src, stabil: s, bereich: null, chosenValues: [iMs, oMs] };
+                                }
+                                return { source: src, stabil: "teilweise", bereich: iOk ? "nur Intro" : "nur Outro", chosenValues: [iOk ? iMs : oMs] };
+                            }
+
+                            const result: Result = (engIntroOk || engOutroOk)
+                                ? evalWindows(engIntroOk, engOutroOk, intro.offsetMs, outro.offsetMs, "eng")
+                                : (wIntroOk || wOutroOk)
+                                    ? evalWindows(wIntroOk, wOutroOk, introWide.offsetMs, outroWide.offsetMs, "wide fallback")
+                                    : { source: "keine", stabil: "nein", bereich: null, chosenValues: [] };
+
+                            const { source, stabil, bereich, chosenValues } = result;
+
+                            // ── Median ────────────────────────────────────
+                            const medianMs = (() => {
+                                if (chosenValues.length === 0) return 0;
+                                const s = [...chosenValues].sort((a, b) => a - b);
+                                const m = Math.floor(s.length / 2);
+                                return s.length % 2 === 1 ? s[m] : (s[m - 1] + s[m]) / 2;
+                            })();
+                            const medianSec = medianMs / 1000;
+                            const correctedGridStart = gridStart + medianSec;
+
                             console.group(`[GridOffset Result] ${current?.title}`);
-                            console.log(`Intro (0–30s):     Offset ${intro.offsetMs.toFixed(1)} ms  |  ${intro.matchCount} Matches`);
-                            console.log(`Outro (letzt 30s): Offset ${outro.offsetMs.toFixed(1)} ms  |  ${outro.matchCount} Matches`);
+                            console.log(`--- eng (${TOL_ENG} ms) ---`);
+                            console.log(`Intro:  Offset ${intro.offsetMs.toFixed(1)} ms  |  ${intro.matchCount} Matches`);
+                            console.log(`Outro:  Offset ${outro.offsetMs.toFixed(1)} ms  |  ${outro.matchCount} Matches`);
+                            console.log(`--- wide (${TOL_WIDE} ms) ---`);
+                            console.log(`Intro:  Offset ${introWide.offsetMs.toFixed(1)} ms  |  ${introWide.matchCount} Matches  |  Phase ${(Math.abs(introWide.offsetMs) / beatMs * 100).toFixed(0)}%`);
+                            console.log(`Outro:  Offset ${outroWide.offsetMs.toFixed(1)} ms  |  ${outroWide.matchCount} Matches  |  Phase ${(Math.abs(outroWide.offsetMs) / beatMs * 100).toFixed(0)}%`);
+                            console.log(`--- Ergebnis ---`);
+                            console.log(`Quelle:            ${source}`);
+                            console.log(`stabil:            ${stabil}${bereich ? `  (${bereich})` : ""}`);
+                            console.log(`Median-Offset:     ${chosenValues.length > 0 ? medianMs.toFixed(1) + " ms" : "–"}`);
+                            console.log(`GridStart (roh):   ${gridStart.toFixed(4)} s`);
+                            if (stabil === "ja") {
+                                console.log(`GridStart (korr):  ${correctedGridStart.toFixed(4)} s  ← global DEBUG aktiv`);
+                            } else if (stabil === "teilweise" && bereich === "nur Outro") {
+                                console.log(`Outro-Offset:      ${medianMs.toFixed(1)} ms  ← nur Outro-/Transition-Debug, kein globales Grid`);
+                            }
                             console.groupEnd();
+
+                            setDebugGridOffsetSec(stabil === "ja" ? medianSec : null);
                         }}
-                        title="Grid-Offset Intro/Outro messen"
-                        style={{ marginLeft: "4px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "4px", color: "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
+                        title={debugGridOffsetSec !== null ? `Grid-Offset aktiv: ${(debugGridOffsetSec * 1000).toFixed(1)} ms – klicken zum Neu-Messen` : "Grid-Offset Intro/Outro messen"}
+                        style={{ marginLeft: "4px", background: debugGridOffsetSec !== null ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.05)", border: `1px solid ${debugGridOffsetSec !== null ? "#10b981" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: debugGridOffsetSec !== null ? "#10b981" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
                     >⊡</button>
                 </div>
             </div>
@@ -312,7 +383,11 @@ export default function MixPlayer({
                         currentTime={curTime}
                         onSeek={onSeek}
                         bpm={current.analysis?.detectedBpm ?? current.bpm}
-                        beatGridStartSeconds={current.analysis?.beatGridStartSeconds}
+                        beatGridStartSeconds={
+                            debugGridOffsetSec !== null && current.analysis?.beatGridStartSeconds !== undefined
+                                ? current.analysis.beatGridStartSeconds + debugGridOffsetSec
+                                : current.analysis?.beatGridStartSeconds
+                        }
                         beats={current.analysis?.beats}
                         metroBeat={metroBeat}
                     />
