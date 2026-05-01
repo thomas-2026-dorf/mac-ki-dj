@@ -1,3 +1,9 @@
+export type ActivityRegion = {
+    startSeconds: number;
+    endSeconds: number;
+    confidence: number;
+};
+
 export type PreparedSignal = {
     samples: Float32Array;
     sampleRate: number;
@@ -59,4 +65,5 @@ export type AudioAnalysisResult = {
     beats?: number[];
     cuePoints: CuePoint[];
     beatGridStartSeconds: number;
+    activityRegions?: ActivityRegion[];
 };

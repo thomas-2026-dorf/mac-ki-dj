@@ -47,3 +47,90 @@ export function calculateEnergyLevel(frames: EnergyFrame[], onsetCount: number):
 
     return Math.round(Math.max(1, Math.min(10, rawScore)));
 }
+
+export type ActivityRegion = {
+    startSeconds: number;
+    endSeconds: number;
+    confidence: number;  // 0..1: mittlere Energie des Bereichs relativ zum globalen Maximum
+};
+
+/**
+ * detectActivityRegions
+ * Findet zusammenhängende Zeitbereiche mit erhöhter Energie.
+ * Glättet zuerst mit einem Moving Average (~1s), dann threshold = avg * 0.85.
+ * Kurze Bereiche < minDurationSeconds werden verworfen.
+ */
+export function detectActivityRegions(
+    frames: EnergyFrame[],
+    minDurationSeconds = 2.0,
+): ActivityRegion[] {
+    if (frames.length === 0) return [];
+
+    // Moving Average über ca. 1s (25 Frames à 40ms)
+    const SMOOTH = 25;
+    const half = Math.floor(SMOOTH / 2);
+    const smoothed = frames.map((_, i) => {
+        const lo = Math.max(0, i - half);
+        const hi = Math.min(frames.length - 1, i + half);
+        let sum = 0;
+        for (let j = lo; j <= hi; j++) sum += frames[j].energy;
+        return sum / (hi - lo + 1);
+    });
+
+    const avgEnergy = smoothed.reduce((s, v) => s + v, 0) / smoothed.length;
+    const maxEnergy = Math.max(...smoothed);
+    if (maxEnergy <= 0) return [];
+
+    const threshold = avgEnergy * 0.85;
+
+    let activeFrameCount = 0;
+    const regions: ActivityRegion[] = [];
+    let regionStart: number | null = null;
+    let regionEnergySum = 0;
+    let regionFrameCount = 0;
+
+    for (let i = 0; i < frames.length; i++) {
+        const active = smoothed[i] > threshold;
+        if (active) activeFrameCount++;
+
+        if (active && regionStart === null) {
+            regionStart = frames[i].timeSeconds;
+            regionEnergySum = smoothed[i];
+            regionFrameCount = 1;
+        } else if (active && regionStart !== null) {
+            regionEnergySum += smoothed[i];
+            regionFrameCount++;
+        } else if (!active && regionStart !== null) {
+            const endSeconds = frames[i].timeSeconds;
+            if (endSeconds - regionStart >= minDurationSeconds) {
+                regions.push({
+                    startSeconds: regionStart,
+                    endSeconds,
+                    confidence: Math.min(1, (regionEnergySum / regionFrameCount) / maxEnergy),
+                });
+            }
+            regionStart = null;
+            regionEnergySum = 0;
+            regionFrameCount = 0;
+        }
+    }
+
+    // Letzten offenen Bereich schließen
+    if (regionStart !== null) {
+        const endSeconds = frames[frames.length - 1].timeSeconds;
+        if (endSeconds - regionStart >= minDurationSeconds) {
+            regions.push({
+                startSeconds: regionStart,
+                endSeconds,
+                confidence: Math.min(1, (regionEnergySum / regionFrameCount) / maxEnergy),
+            });
+        }
+    }
+
+    console.log("[detectActivityRegions]",
+        `threshold=${threshold.toFixed(6)}`,
+        `| aktive Frames: ${activeFrameCount}/${frames.length}`,
+        `| Regionen: ${regions.length}`);
+
+    return regions;
+}

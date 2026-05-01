@@ -144,6 +144,8 @@ function getAnalysisMissingFields(track: Track): string[] {
         (a.external?.energy ?? 0);
     if (!(energyValue > 0)) missing.push("energy");
 
+    if (!((a as any).activityRegions?.length > 0)) missing.push("activityRegions");
+
     return missing;
 }
 
@@ -255,13 +257,13 @@ export default function TrackList({
     }
 
     // Einzelnen Track vollständig analysieren
-    async function analyzeTrack(track: Track, currentTracks: Track[]): Promise<{ tracks: Track[]; essentiaRan: boolean }> {
+    async function analyzeTrack(track: Track, currentTracks: Track[], opts?: { forceFresh?: boolean }): Promise<{ tracks: Track[]; essentiaRan: boolean }> {
         if (!track.url) { console.warn(`[analyzeTrack] kein audioPath: "${track.title}"`); return { tracks: currentTracks, essentiaRan: false }; }
         console.group(`[Timing] Track: ${track.title}`);
         const t0total = performance.now();
         const audioPathShort = track.url.split("/").slice(-2).join("/");
 
-        let analysisResult = await prepareTrackAnalysis(track.url);
+        let analysisResult = await prepareTrackAnalysis(track.url, opts?.forceFresh ? { forceFresh: true } : undefined);
         if (!analysisResult.success || !analysisResult.analysis) {
             console.warn(`[analyzeTrack] prepareTrackAnalysis fehlgeschlagen: "${track.title}"`);
             console.groupEnd();
@@ -516,6 +518,14 @@ export default function TrackList({
         setAnalysisDebugMessage(
             `Neu: ${fullAnalyzed} · Energy: ${energyFixed} · Grid: ${gridFixed} · Migration: ${migrated} · Skip: ${skipped} · Fehler: ${errors} · ${fmtTime(totalSec)}`
         );
+    }
+
+    async function handleAnalyzeSingle(track: Track) {
+        if (!track.url) return;
+        setAnalysisDebugMessage(`Analysiere: ${track.title} …`);
+        const { tracks: newTracks } = await analyzeTrack(track, tracks, { forceFresh: true });
+        saveLibrary(newTracks, musicFolder);
+        setAnalysisDebugMessage(`Fertig: ${track.title}`);
     }
 
     useEffect(() => {
@@ -961,6 +971,11 @@ export default function TrackList({
                                 </button>
                                 <strong>{track.title}</strong>
                                 {(() => { const b = getAnalysisBadge(track); return <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: "4px", background: b.bg, border: `1px solid ${b.border}`, color: b.color, whiteSpace: "nowrap" }}>{b.label}</span>; })()}
+                                <button
+                                    onClick={e => { e.stopPropagation(); handleAnalyzeSingle(track); }}
+                                    style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.25)", color: "#64748b", cursor: "pointer", whiteSpace: "nowrap" }}
+                                    title="Diesen Track neu analysieren (forceFresh)"
+                                >Neu</button>
                                 <button
                                     onClick={e => { e.stopPropagation(); setSuggestMenuTrackId(suggestMenuTrackId === track.id ? null : track.id); }}
                                     style={{ marginLeft: "2px", background: suggestMenuTrackId === track.id ? "rgba(56,189,248,0.25)" : "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.4)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#38bdf8" }}

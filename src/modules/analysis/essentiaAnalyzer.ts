@@ -4,6 +4,7 @@ import { EssentiaWASM as EssentiaWASMInit } from "essentia.js/dist/essentia-wasm
 // @ts-expect-error
 import EssentiaCore from "essentia.js/dist/essentia.js-core.es.js";
 import { getCamelotKey } from "./key/keyTheory";
+import { detectActivityRegions, type ActivityRegion } from "./energy";
 
 const TARGET_SR = 44100;
 
@@ -15,6 +16,7 @@ export type EssentiaAnalysisResult = {
     scale: string | null;
     camelotKey: string | null;
     durationSeconds: number;
+    activityRegions: ActivityRegion[];
 };
 
 let _essentia: unknown = null;
@@ -71,6 +73,30 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
     vec.delete?.();
     console.log(`[Timing] Essentia Analyse:   ${(performance.now() - t0essentia).toFixed(0)} ms`);
 
+    // Energie-Frames aus Mono-Signal (40ms-Fenster, mittlerer Betrag)
+    const FRAME_SIZE = Math.floor(TARGET_SR * 0.04);
+    const energyFrames: { index: number; timeSeconds: number; energy: number }[] = [];
+    for (let i = 0, idx = 0; i < signal.length; i += FRAME_SIZE, idx++) {
+        const end = Math.min(i + FRAME_SIZE, signal.length);
+        let sum = 0;
+        for (let j = i; j < end; j++) sum += Math.abs(signal[j]);
+        energyFrames.push({ index: idx, timeSeconds: i / TARGET_SR, energy: sum / (end - i) });
+    }
+    const energies = energyFrames.map(f => f.energy);
+    const avgEnergy = energies.reduce((s, v) => s + v, 0) / (energies.length || 1);
+    console.log("[ActivityDebug] energyFrames:", energyFrames.length,
+        "| min:", Math.min(...energies).toFixed(6),
+        "| avg:", avgEnergy.toFixed(6),
+        "| max:", Math.max(...energies).toFixed(6));
+    console.log("[ActivityDebug] erste 5 Frames:", energyFrames.slice(0, 5).map(f =>
+        ({ t: f.timeSeconds.toFixed(2), e: f.energy.toFixed(6) })));
+
+    const activityRegions = detectActivityRegions(energyFrames);
+
+    console.log("[ActivityDebug] activityRegions:", activityRegions.length);
+    console.log("[ActivityDebug] erste 5 Regions:", activityRegions.slice(0, 5).map(r =>
+        ({ start: r.startSeconds.toFixed(2), end: r.endSeconds.toFixed(2), conf: r.confidence.toFixed(3) })));
+
     return {
         bpm,
         beats,
@@ -79,5 +105,6 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
         scale,
         camelotKey,
         durationSeconds: duration,
+        activityRegions,
     };
 }

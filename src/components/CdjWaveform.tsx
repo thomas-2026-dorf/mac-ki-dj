@@ -15,26 +15,42 @@ type Props = {
     beatGridStartSeconds?: number;
     beats?: number[];
     metroBeat?: { n: number; t: number } | null;
+    /** Kontrollierter Phase-Offset von außen (z.B. MixPlayer-Testpanel).
+     *  Wenn gesetzt, werden die internen Buttons ausgeblendet. */
+    phaseOffset?: number;
+    mixInStartSeconds?: number;
+    mixInEndSeconds?: number;
+    mixOutStartSeconds?: number;
+    mixOutEndSeconds?: number;
+    activityRegions?: { startSeconds: number; endSeconds: number; confidence: number }[];
+    preActivityBeatCount?: number;
 };
 
 export default function CdjWaveform({
     trackId, waveform, duration, currentTime, onSeek,
     bpm, beatGridStartSeconds, beats, metroBeat,
+    phaseOffset: externalPhaseOffset,
+    mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds,
+    activityRegions, preActivityBeatCount,
 }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [zoomLevel, setZoomLevel] = useState(1);
     const [canvasW, setCanvasW] = useState(0);
+    const [internalPhaseOffset, setInternalPhaseOffset] = useState(0);
+    // Wenn externer Offset gesetzt: diesen verwenden, sonst internen
+    const phaseOffset = externalPhaseOffset !== undefined ? externalPhaseOffset : internalPhaseOffset;
 
     // Drag-Scrub: Anchor-Position beim MouseDown merken
     const dragRef = useRef<{ startX: number; startTime: number; windowSec: number } | null>(null);
     // Optimistisches Seek-Time während Drag — sofort sichtbar, ohne auf Engine zu warten
     const [dragTime, setDragTime] = useState<number | null>(null);
 
-    // Zoom zurücksetzen wenn neuer Track geladen wird
+    // Zoom + Phase zurücksetzen wenn neuer Track geladen wird
     useEffect(() => {
         setZoomLevel(1);
         setDragTime(null);
+        setInternalPhaseOffset(0);
     }, [trackId]);
 
     // Canvas-Breite per ResizeObserver tracken
@@ -87,6 +103,45 @@ export default function CdjWaveform({
             ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke();
         }
 
+        // Mix-Zonen-Overlays (unter Labels und Grid-Linien)
+        const drawZone = (start: number | undefined, end: number | undefined, color: string) => {
+            if (start === undefined || end === undefined) return;
+            const x0 = Math.max(0, toX(start));
+            const x1 = Math.min(W, toX(end));
+            if (x1 <= x0) return;
+            ctx.fillStyle = color;
+            ctx.fillRect(x0, 0, x1 - x0, H);
+        };
+        drawZone(mixInStartSeconds, mixInEndSeconds, "rgba(0,150,255,0.18)");
+        drawZone(mixOutStartSeconds, mixOutEndSeconds, "rgba(255,80,80,0.18)");
+
+        // Pre-Activity-Overlays (gelb, vor jeder ActivityRegion)
+        if (activityRegions && preActivityBeatCount && preActivityBeatCount > 0) {
+            const preDuration = bpm && bpm > 0
+                ? preActivityBeatCount * (60 / bpm)
+                : 8;
+            for (const region of activityRegions) {
+                const preStart = Math.max(0, region.startSeconds - preDuration);
+                const x0 = Math.max(0, toX(preStart));
+                const x1 = Math.min(W, toX(region.startSeconds));
+                if (x1 <= x0) continue;
+                ctx.fillStyle = "rgba(255,210,0,0.22)";
+                ctx.fillRect(x0, 0, x1 - x0, H);
+            }
+        }
+
+        // Activity-Region-Overlays (grün, Opacity abhängig von confidence)
+        if (activityRegions) {
+            for (const region of activityRegions) {
+                const x0 = Math.max(0, toX(region.startSeconds));
+                const x1 = Math.min(W, toX(region.endSeconds));
+                if (x1 <= x0) continue;
+                const opacity = 0.1 + region.confidence * 0.3;
+                ctx.fillStyle = `rgba(0,200,100,${opacity.toFixed(3)})`;
+                ctx.fillRect(x0, 0, x1 - x0, H);
+            }
+        }
+
         // Label-Blöcke links
         ctx.font = "bold 9px monospace";
         ctx.textBaseline = "middle";
@@ -121,18 +176,30 @@ export default function CdjWaveform({
                 const t = beatGridStartSeconds + n * beatInterval;
                 if (t < visibleStart - 0.01 || t > vEnd + 0.01) continue;
                 const x = Math.round(toX(t)) + 0.5;
-                const beatInBar = ((n % 4) + 4) % 4;
+                const beatInBar = ((n + phaseOffset) % 4 + 4) % 4;
                 const isDown = beatInBar === 0;
 
-                // GRID-Zeile: Linie + Zahl 1/2/3/4
-                ctx.strokeStyle = isDown ? "rgba(255,255,255,0.80)" : "rgba(255,255,255,0.28)";
-                ctx.lineWidth = isDown ? 2 : 1;
+                // GRID-Zeile: Linie
+                ctx.strokeStyle = isDown ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.40)";
+                ctx.lineWidth = isDown ? 2.5 : 1;
                 ctx.beginPath(); ctx.moveTo(x, rowH + 4); ctx.lineTo(x, rowH * 2 - 4); ctx.stroke();
-                ctx.font = "bold 9px monospace";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "top";
-                ctx.fillStyle = isDown ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.28)";
-                ctx.fillText(String(beatInBar + 1), x, rowH + 2);
+
+                // Beat-Zahl 1/2/3/4 — Beat 1 gold+groß, 2/3/4 weiß
+                if (isDown) {
+                    ctx.fillStyle = "rgba(251,191,36,0.30)";
+                    ctx.fillRect(x - 7, rowH + 1, 14, 13);
+                    ctx.font = "bold 11px monospace";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "top";
+                    ctx.fillStyle = "#fbbf24";
+                    ctx.fillText("1", x, rowH + 2);
+                } else {
+                    ctx.font = "bold 9px monospace";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "top";
+                    ctx.fillStyle = "rgba(255,255,255,0.60)";
+                    ctx.fillText(String(beatInBar + 1), x, rowH + 2);
+                }
 
                 // METRO-Zeile: Beat 1 grün+groß, 2/3/4 weiß+klein
                 if (isDown) {
@@ -197,7 +264,7 @@ export default function CdjWaveform({
         ctx.lineTo(cx, H);
         ctx.stroke();
 
-    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat]);
+    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat, phaseOffset, mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds, activityRegions, preActivityBeatCount]);
 
     // ── Maus-Interaktion ─────────────────────────────────────────────────────
 
@@ -267,6 +334,28 @@ export default function CdjWaveform({
                     style={{ display: "block", width: "100%", height: `${HEIGHT}px`, pointerEvents: "none" }}
                 />
             </div>
+
+            {/* Downbeat-Phase-Buttons — nur wenn nicht von außen kontrolliert (Deck B) */}
+            {externalPhaseOffset === undefined && bpm && bpm > 0 && beatGridStartSeconds !== undefined && (
+                <div style={{
+                    position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)",
+                    display: "flex", gap: "4px", alignItems: "center", zIndex: 10,
+                }}>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setInternalPhaseOffset(o => (o - 1 + 4) % 4); }}
+                        style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                        title="Grid-Phase um 1 Beat zurück"
+                    >Grid −1</button>
+                    <span style={{ fontSize: "10px", color: phaseOffset === 0 ? "#475569" : "#fbbf24", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", background: "rgba(10,20,35,0.85)", padding: "1px 5px", borderRadius: "3px" }}>
+                        {phaseOffset === 0 ? "Phase 0" : `+${phaseOffset} Beat${phaseOffset > 1 ? "s" : ""}`}
+                    </span>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setInternalPhaseOffset(o => (o + 1) % 4); }}
+                        style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                        title="Grid-Phase um 1 Beat vor"
+                    >Grid +1</button>
+                </div>
+            )}
 
             {/* Zoom-Buttons */}
             <div style={{

@@ -55,6 +55,7 @@ export async function prepareTrackAnalysis(inputMp3: string, options?: { forceFr
                 beats:            e.beats,
                 cuePoints,
                 beatGridStartSeconds: e.firstBeatSeconds,
+                activityRegions:  e.activityRegions,
             };
 
             console.log(

@@ -6,6 +6,8 @@ import type { TransitionPoint } from "../types/track";
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import CdjWaveform from "./CdjWaveform";
 import { computeGridOffset, GRID_OFFSET_TOL_ENG, GRID_OFFSET_TOL_WIDE } from "../modules/analysis/gridOffsetAnalyzer";
+import { detectDownbeatPhase } from "../modules/analysis/downbeatDetector";
+import { loadAnalysisCache } from "../modules/analysis/analysisCache";
 
 const TYPE_OPTIONS: {
     key: string;
@@ -92,7 +94,154 @@ export default function MixPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [next?.id]);
 
+    // Downbeat-Erkennung: Debug-Log + UI-State bei jedem Track-Wechsel
+    useEffect(() => {
+        // Sofort zurücksetzen — unabhängig von async Laden
+        setDownbeatSuggestion(null);
+        setTestOffset(0);
+
+        if (!current) return;
+
+        const title = current.title;
+        const bpm   = current.analysis?.detectedBpm ?? current.bpm ?? 0;
+        const dur   = current.analysis?.durationSeconds ?? 0;
+
+        // Mix-Out-Zone bestimmen
+        const beatDuration = bpm > 0 ? 60 / bpm : 0;
+        const zoneEndSeconds: number =
+            current.transitionPoints?.find(p => p.role === "loop-out" || p.role === "cut-out")?.timeSeconds
+            ?? current.outroStartSeconds
+            ?? current.analysis?.outroStartSeconds
+            ?? dur;
+        const zoneStartSeconds: number = Math.max(0, zoneEndSeconds - 64 * beatDuration);
+
+        function runAndLog(beats: number[] | undefined | null) {
+            if (!beats || beats.length < 16) {
+                console.log("[Downbeat]", {
+                    title,
+                    phase: null,
+                    confidence: 0,
+                    reason: `beats[] nicht verfügbar (${beats?.length ?? 0} Einträge) — Track analysieren`,
+                });
+                return;
+            }
+            if (bpm <= 0 || dur <= 0) {
+                console.log("[Downbeat]", { title, phase: null, confidence: 0,
+                    reason: `BPM (${bpm}) oder Dauer (${dur}s) fehlt` });
+                return;
+            }
+
+            const result = detectDownbeatPhase({
+                beats,
+                bpm,
+                durationSeconds: dur,
+                zoneStartSeconds,
+                zoneEndSeconds,
+            });
+            if (!result) {
+                console.log("[Downbeat]", { title, phase: null, confidence: 0, reason: "Erkennung fehlgeschlagen" });
+                return;
+            }
+
+            // Kompakt-Log — immer sichtbar
+            console.log("[Downbeat]", {
+                title,
+                phase: result.downbeatPhase,
+                confidence: parseFloat((result.confidence * 100).toFixed(0)),
+            });
+
+            // UI-State setzen
+            setDownbeatSuggestion({ phase: result.downbeatPhase, confidence: result.confidence });
+
+            // Detail-Gruppe
+            const pct = (result.confidence * 100).toFixed(0);
+            console.group(`[Downbeat] "${title}" — Phase ${result.downbeatPhase}  (${pct}%)`);
+            console.log("vorgeschlagene Phase  :", result.downbeatPhase,
+                `→ Grid +${result.downbeatPhase} Beat${result.downbeatPhase !== 1 ? "s" : ""}`);
+            console.log("Confidence            :", pct + "%");
+            console.log("Grund                 :", result.reason);
+            console.log("1 liegt aktuell auf   :", `Beat ${result.downbeatPhase + 1} des Rasters (Phase 0 = Grid-Anfang)`);
+            console.log("Phase-Scores (norm.)  :", result.phaseScores.map((s, i) =>
+                `P${i}=${s.toFixed(3)}`).join("  "));
+            console.log("Metrik A (Dev)        :", result.debugInfo.metricA_scores.join("  "));
+            console.log("Metrik B (IBI-Komp.)  :", result.debugInfo.metricB_scores.join("  "));
+            console.log("Core-Beats            :", result.debugInfo.coreBeats,
+                `(intro: −${result.debugInfo.introSkipped}  outro: −${result.debugInfo.outroSkipped})`);
+            console.log("Fenster-Votes         :", result.debugInfo.windowVotes.join(" "),
+                `(${result.debugInfo.windows} Fenster à 32 Beats)`);
+            console.log("Zone                  :",
+                result.debugInfo.zoneUsed
+                    ? `aktiv — ${result.debugInfo.zoneStartSeconds?.toFixed(1)}s … ${result.debugInfo.zoneEndSeconds?.toFixed(1)}s`
+                    : "Fallback (Intro/Outro 15%)");
+            console.groupEnd();
+        }
+
+        // Beats direkt im Track-Objekt?
+        const tracksBeats = current.analysis?.beats;
+        if (tracksBeats && tracksBeats.length > 0) {
+            runAndLog(tracksBeats);
+        } else if (current.url) {
+            // beats[] wird beim Speichern gestripped (sanitizeTrackForStorage) →
+            // aus Analysis-Cache nachladen
+            loadAnalysisCache(current.url)
+                .then(cached => runAndLog(cached?.beats))
+                .catch(() => runAndLog(null));
+        } else {
+            runAndLog(null);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [current?.id]);
+
+    const [activityRegions, setActivityRegions] = useState<{ startSeconds: number; endSeconds: number; confidence: number }[] | null>(null);
+
+    useEffect(() => {
+        setActivityRegions(null);
+        if (!current) return;
+        // Bevorzugt aus Cache laden (enthält activityRegions nach Neuanalyse)
+        const logRegions = (regions: typeof activityRegions) => {
+            console.log("[ActivityRegions Player]", {
+                track: current?.title,
+                count: regions?.length ?? 0,
+                first: regions?.slice?.(0, 3) ?? null,
+            });
+        };
+
+        if (current.url) {
+            loadAnalysisCache(current.url)
+                .then(cached => {
+                    if (cached?.activityRegions && cached.activityRegions.length > 0) {
+                        setActivityRegions(cached.activityRegions);
+                        logRegions(cached.activityRegions);
+                    } else if ((current.analysis as any)?.activityRegions) {
+                        const regions = (current.analysis as any).activityRegions;
+                        setActivityRegions(regions);
+                        logRegions(regions);
+                    } else {
+                        logRegions(null);
+                    }
+                })
+                .catch(() => {
+                    if ((current.analysis as any)?.activityRegions) {
+                        const regions = (current.analysis as any).activityRegions;
+                        setActivityRegions(regions);
+                        logRegions(regions);
+                    } else {
+                        logRegions(null);
+                    }
+                });
+        } else if ((current.analysis as any)?.activityRegions) {
+            const regions = (current.analysis as any).activityRegions;
+            setActivityRegions(regions);
+            logRegions(regions);
+        } else {
+            logRegions(null);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [current?.id]);
+
     const [metroOn, setMetroOn] = useState(false);
+    const [downbeatSuggestion, setDownbeatSuggestion] = useState<{ phase: 0|1|2|3; confidence: number } | null>(null);
+    const [testOffset, setTestOffset] = useState(0);
     const [metroBeat, setMetroBeat] = useState<{ n: number; t: number } | null>(null);
     const [debugGridOffsetSec, setDebugGridOffsetSec] = useState<number | null>(null);
     const audioCtxRef  = useRef<AudioContext | null>(null);
@@ -329,7 +478,75 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {current && curDur > 0 && (
+            {/* ── Downbeat-Testpanel ──────────────────────────── */}
+            {current && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", padding: "4px 8px", background: "rgba(10,16,30,0.8)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", marginRight: "2px" }}>Downbeat:</span>
+                    {downbeatSuggestion ? (() => {
+                        const pct = Math.round(downbeatSuggestion.confidence * 100);
+                        const effectivePhase = (downbeatSuggestion.phase - testOffset + 4) % 4;
+                        if (testOffset > 0) {
+                            return (
+                                <>
+                                    <span style={{ fontSize: "11px", color: "#fbbf24", fontWeight: 700 }}>
+                                        Manueller Test aktiv – bitte hören
+                                    </span>
+                                    <span style={{ fontSize: "11px", color: "#64748b" }}>
+                                        Auto: Phase {downbeatSuggestion.phase} · {pct}%
+                                    </span>
+                                    <span style={{ fontSize: "11px", color: "#fbbf24" }}>
+                                        Test +{testOffset} Beats → effektiv Phase {effectivePhase}
+                                    </span>
+                                </>
+                            );
+                        }
+                        const statusLabel = pct >= 85 ? "sicher" : pct >= 60 ? "prüfen" : "unsicher";
+                        const statusColor = pct >= 85 ? "#86efac" : pct >= 60 ? "#fbbf24" : "#f87171";
+                        return (
+                            <>
+                                <span style={{ fontSize: "11px", color: statusColor, fontWeight: 700 }}>
+                                    Auto-Downbeat: {statusLabel}
+                                </span>
+                                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                                    Phase {downbeatSuggestion.phase} · {pct}% · Vorschlag: Grid +{downbeatSuggestion.phase} Beat{downbeatSuggestion.phase !== 1 ? "s" : ""}
+                                </span>
+                            </>
+                        );
+                    })() : (
+                        <span style={{ fontSize: "11px", color: "#334155" }}>wird geladen…</span>
+                    )}
+                    <span style={{ fontSize: "11px", color: "#1e3a5a", margin: "0 2px" }}>│</span>
+                    {([1, 2, 3] as const).map(n => (
+                        <button
+                            key={n}
+                            onClick={() => setTestOffset(n)}
+                            style={{ background: testOffset === n ? "rgba(251,191,36,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${testOffset === n ? "#fbbf24" : "rgba(255,255,255,0.12)"}`, borderRadius: "4px", color: testOffset === n ? "#fbbf24" : "#64748b", fontSize: "11px", padding: "2px 8px", cursor: "pointer", fontWeight: testOffset === n ? 700 : 400 }}
+                        >Test +{n}</button>
+                    ))}
+                    <button
+                        onClick={() => setTestOffset(0)}
+                        style={{ background: testOffset === 0 ? "rgba(99,102,241,0.12)" : "rgba(255,255,255,0.04)", border: `1px solid ${testOffset === 0 ? "#818cf8" : "rgba(255,255,255,0.12)"}`, borderRadius: "4px", color: testOffset === 0 ? "#818cf8" : "#475569", fontSize: "11px", padding: "2px 8px", cursor: "pointer" }}
+                    >Reset</button>
+                    {testOffset > 0 && (
+                        <span style={{ fontSize: "11px", color: "#fbbf24", fontWeight: 700, marginLeft: "4px" }}>
+                            ● Test-Phase aktiv: +{testOffset} Beat{testOffset !== 1 ? "s" : ""}
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {current && curDur > 0 && (() => {
+                const deckABpm = current.analysis?.detectedBpm ?? current.bpm ?? 0;
+                const deckABeatDur = deckABpm > 0 ? 60 / deckABpm : 0;
+                const deckAMixOutEnd: number =
+                    current.transitionPoints?.find(p => p.role === "loop-out" || p.role === "cut-out")?.timeSeconds
+                    ?? current.outroStartSeconds
+                    ?? current.analysis?.outroStartSeconds
+                    ?? curDur;
+                const deckAMixOutStart = Math.max(0, deckAMixOutEnd - 64 * deckABeatDur);
+                const deckAMixInStart = 0;
+                const deckAMixInEnd = 64 * deckABeatDur;
+                return (
                 <div className="mix-waveform-wrap">
                     <CdjWaveform
                         trackId={current.id}
@@ -345,10 +562,18 @@ export default function MixPlayer({
                         }
                         beats={current.analysis?.beats}
                         metroBeat={metroBeat}
+                        phaseOffset={testOffset}
+                        mixInStartSeconds={deckAMixInStart}
+                        mixInEndSeconds={deckAMixInEnd}
+                        mixOutStartSeconds={deckAMixOutStart}
+                        mixOutEndSeconds={deckAMixOutEnd}
+                        activityRegions={activityRegions ?? undefined}
+                        preActivityBeatCount={16}
                     />
                     {/* BeatGridDebug ausgeblendet */}
                 </div>
-            )}
+                );
+            })()}
 
             {/* ── Track B: nächster ───────────────────────────── */}
             <div className="mix-track-row mix-track-row-next">
