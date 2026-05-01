@@ -78,11 +78,6 @@ export default function CdjWaveform({
         canvas.width = canvasW;
         canvas.height = HEIGHT;
 
-        console.log("[WaveformDebug]", {
-            alignedVocalRegions: alignedVocalRegions?.length,
-            vocalMixZones: vocalMixZones?.length,
-        });
-
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
@@ -111,6 +106,7 @@ export default function CdjWaveform({
             ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke();
         }
 
+        /* Analyse-Overlays — deaktiviert
         const drawZone = (start: number | undefined, end: number | undefined, color: string) => {
             if (start === undefined || end === undefined) return;
             const x0 = Math.max(0, toX(start));
@@ -119,22 +115,20 @@ export default function CdjWaveform({
             ctx.fillStyle = color;
             ctx.fillRect(x0, 0, x1 - x0, H);
         };
-
         // Vocal-Regionen (gelb)
         if (alignedVocalRegions) {
             for (const region of alignedVocalRegions) {
                 drawZone(region.startSeconds, region.endSeconds, "rgba(255,210,0,0.22)");
             }
         }
-
-        // Mix-In / Mix-Out aus Vocal-Analyse (blau / rot)
+        // Mix-In / Mix-Out (blau / rot)
         if (vocalMixZones) {
             for (const zone of vocalMixZones) {
                 drawZone(zone.startSeconds, zone.endSeconds,
                     zone.type === "mix-in" ? "rgba(0,120,255,0.28)" : "rgba(255,60,60,0.28)");
             }
         }
-
+        */
 
         // Label-Blöcke links
         ctx.font = "bold 9px monospace";

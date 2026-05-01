@@ -8,6 +8,7 @@ import { detectActivityRegions, type ActivityRegion } from "./energy";
 import { detectVocalCandidateRegions, detectMainVocalRegionsFromFrames, type VocalCandidateRegion } from "./vocalDetector";
 import { alignVocalRegionsToBeats, type AlignedVocalRegion } from "./vocalPhraseAligner";
 import { detectVocalMixZones, type VocalMixZone } from "./mixZoneDetector";
+// import { classifyVocalInstrumental } from "./vocalClassifier"; // YAMNet-Test deaktiviert
 
 const TARGET_SR = 44100;
 
@@ -82,6 +83,32 @@ export type EssentiaAnalysisResult = {
     vocalMixZones: VocalMixZone[];
 };
 
+/* YAMNet-Test deaktiviert
+async function runYAMNetTest(signal: Float32Array, duration: number): Promise<void> {
+    const clips = [
+        { label: "Vocal (131–134s)",     start: 131, end: 134 },
+        { label: "Intro/Instr (20–23s)", start: 20,  end: 23  },
+    ];
+    for (const clip of clips) {
+        if (clip.end > duration) {
+            console.log(`[YAMNetRealTest] ${clip.label} — Track zu kurz (${duration.toFixed(1)}s), übersprungen`);
+            continue;
+        }
+        const startIdx = Math.floor(clip.start * TARGET_SR);
+        const endIdx   = Math.min(Math.floor(clip.end * TARGET_SR), signal.length);
+        const samples  = signal.slice(startIdx, endIdx);
+        console.log("[YAMNetRealTest] start", clip.label, `(${samples.length} Samples)`);
+        const result = await classifyVocalInstrumental({
+            samples,
+            sampleRate: TARGET_SR,
+            startSeconds: clip.start,
+            endSeconds:   clip.end,
+        });
+        console.log("[YAMNetRealTest] result", clip.label, result);
+    }
+}
+*/
+
 let _essentia: unknown = null;
 async function getEssentia() {
     if (_essentia) return _essentia as InstanceType<typeof EssentiaCore>;
@@ -116,6 +143,7 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
     const t0decode = performance.now();
     const { signal, duration } = await decodeToMono(audioData);
     console.log(`[Timing] decodeAudioData:    ${(performance.now() - t0decode).toFixed(0)} ms`);
+    // void runYAMNetTest(signal, duration); // YAMNet-Test deaktiviert
 
     const t0essentia = performance.now();
     const essentia = await getEssentia();
@@ -151,8 +179,7 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
         const midEnergy = computeMidBandEnergy(signal, i, end - i);
         vocalPrepFrames.push({ timeSeconds: i / TARGET_SR, energy, centroid, zcr, midEnergy });
     }
-    console.log("[VocalPrep]", vocalPrepFrames.slice(0, 10).map(f =>
-        ({ t: f.timeSeconds.toFixed(3), e: f.energy.toFixed(6), centroid: f.centroid.toFixed(1), zcr: f.zcr.toFixed(4), midE: f.midEnergy.toFixed(6) })));
+    // console.log("[VocalPrep]", vocalPrepFrames.slice(0, 10).map(...));
 
     const vocalCandidateRegions = detectVocalCandidateRegions(vocalPrepFrames);
     const alignedVocalRegions = alignVocalRegionsToBeats(vocalCandidateRegions, beats);
@@ -161,26 +188,10 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
     const alignedMainVocalRegions = alignVocalRegionsToBeats(mainVocalRegions, beats);
     const vocalMixZones = detectVocalMixZones(alignedMainVocalRegions, beats);
 
-    console.log("[VocalMixZonesSource]", {
-        allAligned: alignedVocalRegions.length,
-        mainAligned: alignedMainVocalRegions.length,
-        zones: vocalMixZones.length,
-    });
-
-    const energies = energyFrames.map(f => f.energy);
-    const avgEnergy = energies.reduce((s, v) => s + v, 0) / (energies.length || 1);
-    console.log("[ActivityDebug] energyFrames:", energyFrames.length,
-        "| min:", Math.min(...energies).toFixed(6),
-        "| avg:", avgEnergy.toFixed(6),
-        "| max:", Math.max(...energies).toFixed(6));
-    console.log("[ActivityDebug] erste 5 Frames:", energyFrames.slice(0, 5).map(f =>
-        ({ t: f.timeSeconds.toFixed(2), e: f.energy.toFixed(6) })));
+    // console.log("[VocalMixZonesSource]", { allAligned, mainAligned, zones });
 
     const activityRegions = detectActivityRegions(energyFrames);
-
-    console.log("[ActivityDebug] activityRegions:", activityRegions.length);
-    console.log("[ActivityDebug] erste 5 Regions:", activityRegions.slice(0, 5).map(r =>
-        ({ start: r.startSeconds.toFixed(2), end: r.endSeconds.toFixed(2), conf: r.confidence.toFixed(3) })));
+    // console.log("[ActivityDebug] activityRegions:", activityRegions.length);
 
     const result = {
         bpm,
