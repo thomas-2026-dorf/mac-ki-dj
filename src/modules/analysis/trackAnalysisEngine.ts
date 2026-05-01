@@ -17,17 +17,19 @@ export type RustAnalysisResult = {
     stratum_downbeats: number[];
 };
 
-export async function prepareTrackAnalysis(inputMp3: string) {
+export async function prepareTrackAnalysis(inputMp3: string, options?: { forceFresh?: boolean }) {
     try {
-        const cached = await loadAnalysisCache(inputMp3);
-
-        if (cached) {
-            return { success: true, analysis: cached, rustAnalysis: null, cached: true };
+        if (!options?.forceFresh) {
+            const cached = await loadAnalysisCache(inputMp3);
+            if (cached) {
+                return { success: true, analysis: cached, rustAnalysis: null, cached: true };
+            }
         }
 
         // Primär: Essentia-Pfad direkt aus MP3 (kein WAV-Umweg, kein Rust)
         let analysis: AudioAnalysisResult;
         try {
+            console.log(`[Essentia] Datei lesen / decodeAudioData / Essentia Analyse: ${inputMp3.split("/").slice(-1)[0]}`);
             const e = await analyzeTrackWithEssentia(inputMp3);
 
             const cuePoints: CuePoint[] = e.firstBeatSeconds > 0 ? [{

@@ -92,6 +92,8 @@ export type TrackAnalysis = {
     scale?: string;
     camelotKey?: string;
     gridOffset?: TrackGridOffset;
+    energy?: number;
+    beatCount?: number;
 
     debug?: {
         onsetCount: number;

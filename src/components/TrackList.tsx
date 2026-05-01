@@ -9,7 +9,6 @@ import { suggestTransitionPoints, formatTransitionTime, ROLE_COLORS } from "../m
 import { convertAndStretch } from "../modules/audio/timeStretchEngine";
 import { prepareTrackAnalysis } from "../modules/analysis/trackAnalysisEngine";
 import { computeGridOffset } from "../modules/analysis/gridOffsetAnalyzer";
-import { runEssentiaTest } from "../modules/analysis/essentiaTest";
 import type { Track, TrackGridOffset, TransitionPoint } from "../types/track";
 
 const MUSIC_FOLDER_STORAGE_KEY = "tk-dj-music-folder-v1";
@@ -47,15 +46,23 @@ type Mp3TagInfo = {
 function parseMixedInKeyComment(comment?: string): Partial<Pick<Track, "bpm" | "key" | "energy">> {
     if (!comment) return {};
 
-    const match = comment.match(/\b(([1-9]|1[0-2])[AB])\b\s*[-|/]\s*(\d{2,3}(?:[.,]\d+)?)\s*[-|/]\s*(10|[1-9])\b/i);
+    const result: Partial<Pick<Track, "bpm" | "key" | "energy">> = {};
 
-    if (!match) return {};
+    // Kombiniertes MIK-Format: "8A / 128 / 7" oder "8A - 128 - 7"
+    const combined = comment.match(/\b(([1-9]|1[0-2])[AB])\b\s*[-|/]\s*(\d{2,3}(?:[.,]\d+)?)\s*[-|/]\s*(10|[1-9])\b/i);
+    if (combined) {
+        result.key    = combined[1].toUpperCase();
+        result.bpm    = Math.round(Number(combined[3].replace(",", ".")));
+        result.energy = Number(combined[4]);
+    }
 
-    return {
-        key: match[1].toUpperCase(),
-        bpm: Math.round(Number(match[3].replace(",", "."))),
-        energy: Number(match[4]),
-    };
+    // Standalone Energy: "Energy 8", "Energy: 8", "Energy=8"
+    if (!result.energy) {
+        const energyMatch = comment.match(/\benergy\s*[=:]?\s*(10|[1-9])\b/i);
+        if (energyMatch) result.energy = Number(energyMatch[1]);
+    }
+
+    return result;
 }
 
 function formatDurationFromSeconds(seconds?: number): string {
@@ -94,6 +101,98 @@ function cleanAmazonTitle(title: string): string {
         .trim();
 }
 
+const _loggedMissingFields = new Set<string>();
+
+// Liest einen Feldwert mit Fallback auf alternative Namen (Altbestand-Kompatibilität)
+function anyField(obj: unknown, ...keys: string[]): unknown {
+    if (!obj || typeof obj !== "object") return undefined;
+    const rec = obj as Record<string, unknown>;
+    for (const k of keys) {
+        if (rec[k] !== undefined && rec[k] !== null) return rec[k];
+    }
+    return undefined;
+}
+
+function getAnalysisMissingFields(track: Track): string[] {
+    const a = track.analysis;
+    if (!a) return ["analysis"];
+    const missing: string[] = [];
+
+    // durationSeconds — Fallback auf "duration" (Altbestand)
+    const dur = a.durationSeconds ?? Number(anyField(a, "duration") ?? 0);
+    if (!(dur > 0)) missing.push("durationSeconds");
+
+    if (!(track.bpm > 0)) missing.push("bpm");
+
+    // beats — Fallback auf beatCount (kompakte Speicherung) oder alternative Namen
+    const beatCount = (Array.isArray(a.beats) ? a.beats.length : 0)
+        || (a.beatCount ?? 0)
+        || Number(anyField(a, "beatPositions", "beatList") !== undefined
+            ? (anyField(a, "beatPositions", "beatList") as unknown[]).length ?? 0
+            : 0);
+    if (!(beatCount > 0)) missing.push("beats");
+
+    if (!track.key && !a.camelotKey) missing.push("key/camelotKey");
+
+    if (!a.gridOffset) missing.push("gridOffset");
+
+    // energy — Fallback auf "energyLevel" (Altbestand runtime-only)
+    const energyValue =
+        (track.energy ?? 0) ||
+        (a.energy ?? 0) ||
+        Number(anyField(a, "energyLevel") ?? 0) ||
+        (a.external?.energy ?? 0);
+    if (!(energyValue > 0)) missing.push("energy");
+
+    return missing;
+}
+
+function logTrackDebugSnapshot(track: Track, missing: string[], err?: unknown): void {
+    const a = track.analysis as Record<string, unknown> | undefined;
+    const t = track as unknown as Record<string, unknown>;
+    console.group(`[Debug] "${track.title}" – fehlend: [${missing.join(", ")}]`);
+    if (err) console.error("  Fehler:", err instanceof Error ? err.stack ?? err.message : String(err));
+    console.log("  track.bpm          :", track.bpm);
+    console.log("  track.key          :", track.key);
+    console.log("  track.energy       :", track.energy);
+    console.log("  track.energyLevel  :", t["energyLevel"]);
+    console.log("  track.duration     :", track.duration);
+    console.log("  track.durationSec  :", t["durationSeconds"]);
+    console.log("  analysis?          :", !!a);
+    if (a) {
+        console.log("  a.status           :", a["status"]);
+        console.log("  a.analyzedAt       :", a["analyzedAt"] ?? a["analysedAt"]);
+        console.log("  a.analysisVersion  :", a["analysisVersion"] ?? a["version"]);
+        console.log("  a.durationSeconds  :", a["durationSeconds"] ?? a["duration"]);
+        console.log("  a.beats?.length    :", Array.isArray(a["beats"]) ? (a["beats"] as unknown[]).length : `(keine) beatCount=${a["beatCount"]}`);
+        console.log("  a.gridOffset       :", a["gridOffset"] ? JSON.stringify(a["gridOffset"]).slice(0, 80) : undefined);
+        console.log("  a.energy           :", a["energy"]);
+        console.log("  a.energyLevel      :", a["energyLevel"]);
+        console.log("  a.camelotKey       :", a["camelotKey"]);
+        console.log("  a.external?.energy :", (a["external"] as Record<string, unknown> | undefined)?.["energy"]);
+    }
+    console.groupEnd();
+}
+
+function getAnalysisBadge(track: Track): { label: string; color: string; bg: string; border: string } {
+    if (!track.analysis) {
+        return { label: "⏳ fehlt", color: "#94a3b8", bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.3)" };
+    }
+    const missing = getAnalysisMissingFields(track);
+    const logKey = `${track.id}:${missing.join(",")}`;
+    if (!_loggedMissingFields.has(logKey) && missing.length > 0) {
+        _loggedMissingFields.add(logKey);
+        console.log(`[Badge] "${track.title}" – fehlende Felder: ${missing.join(", ")}`);
+    }
+    if (missing.length === 0) {
+        return { label: "✅ analysiert", color: "#86efac", bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.3)" };
+    }
+    if (missing.length === 1 && missing[0] === "energy") {
+        return { label: "⚠️ Energy fehlt", color: "#fbbf24", bg: "rgba(251,191,36,0.1)", border: "rgba(251,191,36,0.3)" };
+    }
+    return { label: "⚠️ unvollständig", color: "#fbbf24", bg: "rgba(251,191,36,0.1)", border: "rgba(251,191,36,0.3)" };
+}
+
 export default function TrackList({
     onLoadA,
     onLoadP1,
@@ -113,55 +212,102 @@ export default function TrackList({
     const [suggestMenuTrackId, setSuggestMenuTrackId] = useState<string | null>(null);
     const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
 
-    function saveLibrary(updatedTracks: Track[], folder: string | null) {
-        localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(updatedTracks));
+    function sanitizeTrackForStorage(track: Track): Track {
+        if (!track.analysis) return track;
+        const { beats, waveform, ...compactAnalysis } = track.analysis;
+        return {
+            ...track,
+            analysis: {
+                ...compactAnalysis,
+                beatCount: beats ? beats.length : (track.analysis.beatCount ?? 0),
+            },
+        };
+    }
 
+    function saveLibrary(updatedTracks: Track[], folder: string | null) {
+        try {
+            const compact = updatedTracks.map(sanitizeTrackForStorage);
+            localStorage.setItem(TRACK_LIBRARY_STORAGE_KEY, JSON.stringify(compact));
+        } catch (err) {
+            if (err instanceof DOMException && err.name === "QuotaExceededError") {
+                console.error("[saveLibrary] QuotaExceededError — localStorage voll. Tracks:", updatedTracks.length, err);
+            } else {
+                console.error("[saveLibrary] Fehler beim Speichern:", err);
+            }
+        }
         if (folder) {
             localStorage.setItem(MUSIC_FOLDER_STORAGE_KEY, folder);
         }
     }
 
-    // Einzelnen Track analysieren und Library aktualisieren (shared von ⚡ und Batch)
-    async function analyzeTrack(track: Track, currentTracks: Track[]): Promise<Track[]> {
-        if (!track.url) return currentTracks;
+    function buildGridOffset(beats: number[], bpm: number, gridStart: number, durationSeconds: number): TrackGridOffset | undefined {
+        const goResult = computeGridOffset({ beats, bpm, gridStart, durationSeconds });
+        if (goResult.source === "keine") return undefined;
+        return {
+            offsetSeconds: goResult.medianSec,
+            offsetMs:      goResult.medianMs,
+            stability:     goResult.stabil,
+            source:        goResult.source,
+            range:         goResult.bereich,
+            ...(goResult.stabil === "ja" ? { globalGridStartSeconds: goResult.correctedGridStart } : {}),
+            ...(goResult.stabil === "teilweise" && goResult.bereich === "nur Outro" ? { outroOffsetSeconds: goResult.medianSec } : {}),
+        };
+    }
+
+    // Einzelnen Track vollständig analysieren
+    async function analyzeTrack(track: Track, currentTracks: Track[]): Promise<{ tracks: Track[]; essentiaRan: boolean }> {
+        if (!track.url) { console.warn(`[analyzeTrack] kein audioPath: "${track.title}"`); return { tracks: currentTracks, essentiaRan: false }; }
         console.group(`[Timing] Track: ${track.title}`);
         const t0total = performance.now();
-        const analysisResult = await prepareTrackAnalysis(track.url);
+        const audioPathShort = track.url.split("/").slice(-2).join("/");
+
+        let analysisResult = await prepareTrackAnalysis(track.url);
         if (!analysisResult.success || !analysisResult.analysis) {
+            console.warn(`[analyzeTrack] prepareTrackAnalysis fehlgeschlagen: "${track.title}"`);
             console.groupEnd();
-            return currentTracks;
+            return { tracks: currentTracks, essentiaRan: false };
         }
+
+        // Cache-Bypass: wenn Cache beats leer liefert, Essentia neu ausführen
+        if (analysisResult.cached && !((analysisResult.analysis.beats?.length ?? 0) > 0)) {
+            console.warn(`[analyzeTrack] Cache hat leere beats → forceFresh für "${track.title}"`);
+            const fresh = await prepareTrackAnalysis(track.url, { forceFresh: true });
+            if (fresh.success && fresh.analysis) analysisResult = fresh;
+        }
+
         const a = analysisResult.analysis;
+        const beatsLen = a.beats?.length ?? 0;
+        console.log(`[analyzeTrack] audioPath=…/${audioPathShort} cached=${analysisResult.cached} beats=${beatsLen} bpm=${a.bpm?.toFixed(2) ?? "–"} dur=${a.durationSeconds?.toFixed(1) ?? "–"}s`);
+
+        if (beatsLen === 0) {
+            console.warn(`[analyzeTrack] Essentia lieferte keine Beats — Track wird nicht als analysiert gezählt: "${track.title}"`);
+        }
+
         const floatBpm = a.bpm ?? undefined;
         const gridStart = a.beatGridStartSeconds as number | undefined;
         let gridOffset: TrackGridOffset | undefined;
-        if (a.beats && floatBpm && gridStart !== undefined && a.durationSeconds > 0) {
+        if (beatsLen > 0 && floatBpm && gridStart !== undefined && a.durationSeconds > 0) {
             const t0go = performance.now();
-            const goResult = computeGridOffset({ beats: a.beats, bpm: floatBpm, gridStart, durationSeconds: a.durationSeconds });
-            console.log(`[Timing] GridOffset Berechnung: ${(performance.now() - t0go).toFixed(0)} ms`);
-            if (goResult.source !== "keine") {
-                gridOffset = {
-                    offsetSeconds: goResult.medianSec,
-                    offsetMs:      goResult.medianMs,
-                    stability:     goResult.stabil,
-                    source:        goResult.source,
-                    range:         goResult.bereich,
-                    ...(goResult.stabil === "ja"
-                        ? { globalGridStartSeconds: goResult.correctedGridStart }
-                        : {}),
-                    ...(goResult.stabil === "teilweise" && goResult.bereich === "nur Outro"
-                        ? { outroOffsetSeconds: goResult.medianSec }
-                        : {}),
-                };
-            }
+            gridOffset = buildGridOffset(a.beats!, floatBpm, gridStart, a.durationSeconds);
+            console.log(`[Timing] GridOffset Berechnung: ${(performance.now() - t0go).toFixed(0)} ms · result=${gridOffset ? "ok" : "keine"}`);
         }
-        console.log(`[Timing] Gesamt Track:          ${(performance.now() - t0total).toFixed(0)} ms`);
+        // Energy: 1. MP3-Tag-Kommentar (MIK), 2. vorhandener track.energy, 3. Audio-Fallback
+        let tagEnergy = 0;
+        try {
+            const tagData = await invoke<Mp3TagInfo>("read_mp3_tags", { path: track.url });
+            tagEnergy = parseMixedInKeyComment(tagData.comment).energy ?? 0;
+            if (tagEnergy > 0) console.log(`[analyzeTrack] Energy aus Tag: ${tagEnergy}`);
+        } catch { /* Tag-Lesefehler ignorieren */ }
+        const rawEnergyLevel = a.energyLevel ?? 0;
+        const computedEnergy = rawEnergyLevel > 0 ? Math.min(10, Math.max(1, Math.round(rawEnergyLevel * 10))) : 0;
+        const finalEnergy = tagEnergy || track.energy || computedEnergy || 0;
+        console.log(`[Timing] Gesamt Track: ${(performance.now() - t0total).toFixed(0)} ms`);
         console.groupEnd();
         const updatedTrack: Track = {
             ...track,
             bpm: floatBpm ? Math.round(floatBpm) : track.bpm,
             key: a.camelotKey || a.key || track.key,
-            energy: a.energyLevel ? Math.round(a.energyLevel) : track.energy,
+            energy: finalEnergy,
             analysis: {
                 ...(track.analysis ?? { cuePoints: [], loops: [] }),
                 status: "done",
@@ -176,8 +322,10 @@ export default function TrackList({
                 detectedBpm: floatBpm,
                 beatGridStartSeconds: gridStart,
                 beats: a.beats,
+                beatCount: beatsLen,
                 bpmConfidence: a.bpmConfidence,
                 bpmSource: "auto",
+                energy: finalEnergy || undefined,
                 cuePoints: track.analysis?.cuePoints ?? [],
                 loops: track.analysis?.loops ?? [],
             },
@@ -185,60 +333,188 @@ export default function TrackList({
         const updatedTracks = currentTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
         setTracks(updatedTracks);
         onTrackUpdated?.(updatedTrack);
-        return updatedTracks;
+        return { tracks: updatedTracks, essentiaRan: !analysisResult.cached };
     }
 
     async function handleAnalyzeAll() {
-        const allMissing = tracks.filter(t => t.url && t.analysis?.status !== "done");
-        if (allMissing.length === 0) {
-            setAnalysisDebugMessage("Alle Tracks bereits analysiert.");
+        // Vollständigkeitsprüfung: status:"done" reicht nicht — echte Felder prüfen
+        const todo = tracks.filter(t => t.url && getAnalysisMissingFields(t).length > 0);
+        if (todo.length === 0) {
+            setAnalysisDebugMessage("Alle Tracks vollständig analysiert.");
             return;
         }
-        setBatchProgress({ done: 0, total: allMissing.length });
+        setBatchProgress({ done: 0, total: todo.length });
         let currentTracks = tracks;
         const times: number[] = [];
-        let analyzed = 0;
-        let errors = 0;
+        let fullAnalyzed = 0, energyFixed = 0, gridFixed = 0, migrated = 0, skipped = 0, errors = 0, detailedLogs = 0;
         const t0total = performance.now();
+        const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`;
 
-        for (let i = 0; i < allMissing.length; i++) {
-            const track = allMissing[i];
+        let traceCount = 0;
+
+        for (let i = 0; i < todo.length; i++) {
+            const track = todo[i];
+            const missing = getAnalysisMissingFields(track);
+
+            const onlyEnergyMissing = missing.length === 1 && missing[0] === "energy";
+            const onlyGridMissing   = missing.length === 1 && missing[0] === "gridOffset";
+            // GRID_ONLY nur wenn beats tatsächlich im Speicher vorliegen (nicht nur beatCount)
+            const hasBeatsInMemory  = (track.analysis?.beats?.length ?? 0) > 0;
+            const path = onlyEnergyMissing ? "ENERGY_ONLY"
+                       : (onlyGridMissing && hasBeatsInMemory) ? "GRID_ONLY"
+                       : "FULL";
+
             const t0 = performance.now();
+
             try {
-                const newTracks = await analyzeTrack(track, currentTracks);
-                if (newTracks !== currentTracks) {
-                    times.push((performance.now() - t0) / 1000);
-                    currentTracks = newTracks;
-                    const t0save = performance.now();
-                    saveLibrary(currentTracks, musicFolder);
-                    console.log(`[Timing] Library speichern:     ${(performance.now() - t0save).toFixed(0)} ms`);
-                    analyzed++;
+                if (path === "FULL") {
+                    const { tracks: newTracks, essentiaRan } = await analyzeTrack(track, currentTracks);
+                    const replaced = newTracks !== currentTracks;
+                    const hadGridOffset = !!track.analysis?.gridOffset;
+                    const after = replaced ? newTracks.find(t => t.id === track.id)?.analysis : undefined;
+                    const beatCountAfter = after?.beatCount ?? (after?.beats?.length ?? 0);
+                    const durAfter       = after?.durationSeconds ?? 0;
+
+                    let subPath: string;
+                    if (!replaced) {
+                        subPath = "ERROR";
+                        errors++;
+                    } else if (essentiaRan && beatCountAfter > 0 && durAfter > 0) {
+                        subPath = "FULL_AUDIO";
+                        times.push((performance.now() - t0) / 1000);
+                        currentTracks = newTracks;
+                        saveLibrary(currentTracks, musicFolder);
+                        fullAnalyzed++;
+                    } else if (essentiaRan) {
+                        subPath = "FULL_AUDIO";
+                        console.warn(`[handleAnalyzeAll] Essentia lieferte keine Beats: "${track.title}" beatCount=${beatCountAfter} dur=${durAfter}`);
+                        currentTracks = newTracks;
+                        saveLibrary(currentTracks, musicFolder);
+                        errors++;
+                    } else if (!hadGridOffset && !!after?.gridOffset) {
+                        subPath = "GRID_ONLY";
+                        currentTracks = newTracks;
+                        saveLibrary(currentTracks, musicFolder);
+                        gridFixed++;
+                    } else if (onlyGridMissing) {
+                        // gridOffset fehlt, Cache-Daten wurden übernommen, aber gridOffset nicht berechenbar → SKIP
+                        subPath = "SKIP";
+                        currentTracks = newTracks;
+                        saveLibrary(currentTracks, musicFolder);
+                        skipped++;
+                    } else {
+                        subPath = "MIGRATION_ONLY";
+                        currentTracks = newTracks;
+                        saveLibrary(currentTracks, musicFolder);
+                        migrated++;
+                    }
+                    if (traceCount < 5) {
+                        traceCount++;
+                        console.log(
+                            `[Trace #${traceCount}] "${track.title}"`,
+                            `\n  missing vorher   : [${missing.join(", ")}]`,
+                            `\n  pfad             : ${subPath}`,
+                            `\n  Essentia gelaufen: ${essentiaRan ? "ja" : "nein"}`,
+                            `\n  duration         : ${durAfter > 0 ? durAfter.toFixed(1) + " s" : "–"}`,
+                            `\n  beatCount        : ${beatCountAfter}`,
+                            `\n  gridOffset       : ${after?.gridOffset ? "ja" : "nein"}`,
+                            `\n  energy           : ${after?.energy ?? "–"}`,
+                        );
+                    }
+                } else if (path === "GRID_ONLY") {
+                    // beats liegen im Speicher → gridOffset direkt berechnen, kein Essentia-Lauf
+                    const an = track.analysis!;
+                    const beats = an.beats!;
+                    const bpm = (track.bpm || an.detectedBpm) ?? 0;
+                    const gridStart = an.beatGridStartSeconds ?? an.firstBeatSeconds ?? 0;
+                    const dur = an.durationSeconds ?? 0;
+                    const builtGridOffset = (bpm > 0 && dur > 0) ? buildGridOffset(beats, bpm, gridStart, dur) : undefined;
+                    if (builtGridOffset) {
+                        const updatedTrack: Track = { ...track, analysis: { ...an, gridOffset: builtGridOffset } };
+                        currentTracks = currentTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+                        setTracks(currentTracks);
+                        saveLibrary(currentTracks, musicFolder);
+                        gridFixed++;
+                    } else {
+                        skipped++;
+                    }
+                    if (traceCount < 5) {
+                        traceCount++;
+                        console.log(
+                            `[Trace #${traceCount}] "${track.title}"`,
+                            `\n  missing vorher   : [${missing.join(", ")}]`,
+                            `\n  pfad             : GRID_ONLY`,
+                            `\n  Essentia gelaufen: nein`,
+                            `\n  duration         : ${dur > 0 ? dur.toFixed(1) + " s" : "–"}`,
+                            `\n  beatCount        : ${beats.length}`,
+                            `\n  gridOffset       : ${builtGridOffset ? "ja" : "nein (Berechnung fehlgeschlagen)"}`,
+                            `\n  energy           : ${an.energy ?? track.energy ?? "–"}`,
+                        );
+                    }
                 } else {
-                    console.error(`[Analyse] Fehler bei "${track.title}": Analyse fehlgeschlagen`);
-                    errors++;
+                    // ENERGY_ONLY: nur Energy aus Tag übernehmen, kein Essentia-Lauf
+                    const an = track.analysis!;
+                    let sourceEnergy = (track.energy ?? 0) || (an.external?.energy ?? 0);
+                    if (!sourceEnergy && track.url) {
+                        try {
+                            const tagData = await invoke<Mp3TagInfo>("read_mp3_tags", { path: track.url });
+                            sourceEnergy = parseMixedInKeyComment(tagData.comment).energy ?? 0;
+                        } catch { /* ignorieren */ }
+                    }
+                    if (sourceEnergy > 0) {
+                        const updatedTrack: Track = { ...track, analysis: { ...an, energy: sourceEnergy } };
+                        currentTracks = currentTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
+                        setTracks(currentTracks);
+                        saveLibrary(currentTracks, musicFolder);
+                        energyFixed++;
+                    } else {
+                        skipped++;
+                    }
+                    if (traceCount < 5) {
+                        traceCount++;
+                        const an2 = track.analysis;
+                        console.log(
+                            `[Trace #${traceCount}] "${track.title}"`,
+                            `\n  missing vorher   : [${missing.join(", ")}]`,
+                            `\n  pfad             : ${sourceEnergy > 0 ? "ENERGY_ONLY" : "SKIP"}`,
+                            `\n  Essentia gelaufen: nein`,
+                            `\n  duration         : ${an2?.durationSeconds ? an2.durationSeconds.toFixed(1) + " s" : "–"}`,
+                            `\n  beatCount        : ${an2?.beatCount ?? (Array.isArray(an2?.beats) ? an2.beats.length : 0)}`,
+                            `\n  gridOffset       : ${an2?.gridOffset ? "ja" : "nein"}`,
+                            `\n  energy           : ${sourceEnergy > 0 ? sourceEnergy : "nicht gefunden"}`,
+                        );
+                    }
                 }
             } catch (err) {
-                console.error(`[Analyse] Fehler bei "${track.title}":`, err);
                 errors++;
+                if (detailedLogs < 10) {
+                    detailedLogs++;
+                    logTrackDebugSnapshot(track, missing, err);
+                } else if (detailedLogs === 10) {
+                    detailedLogs++;
+                    console.warn("[Analyse] Weitere Fehler werden nur gezählt (max. 10 Details erreicht).");
+                }
             }
-            setBatchProgress({ done: i + 1, total: allMissing.length });
+            setBatchProgress({ done: i + 1, total: todo.length });
         }
 
         setBatchProgress(null);
+        _loggedMissingFields.clear();
 
         const totalSec = (performance.now() - t0total) / 1000;
         const avgSec = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
-        const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`;
 
         console.log(`[Analyse] ── Zusammenfassung ──────────────────────────────`);
-        console.log(`[Analyse] Analysiert:    ${analyzed}`);
-        console.log(`[Analyse] Übersprungen:  ${allMissing.length - analyzed - errors}`);
-        console.log(`[Analyse] Fehler:        ${errors}`);
-        console.log(`[Analyse] Zeit pro Track: ${avgSec.toFixed(1)} s`);
-        console.log(`[Analyse] Gesamtzeit:    ${fmtTime(totalSec)}`);
+        console.log(`[Analyse] FULL_AUDIO (neu):  ${fullAnalyzed}  (⌀ ${avgSec.toFixed(1)} s)`);
+        console.log(`[Analyse] ENERGY_ONLY:       ${energyFixed}`);
+        console.log(`[Analyse] GRID_ONLY:         ${gridFixed}`);
+        console.log(`[Analyse] MIGRATION_ONLY:    ${migrated}`);
+        console.log(`[Analyse] SKIP:              ${skipped}`);
+        console.log(`[Analyse] Fehler:            ${errors}`);
+        console.log(`[Analyse] Gesamtzeit:        ${fmtTime(totalSec)}`);
 
         setAnalysisDebugMessage(
-            `Analysiert: ${analyzed} · Fehler: ${errors} · Zeit/Track: ${avgSec.toFixed(1)} s · Gesamt: ${fmtTime(totalSec)}`
+            `Neu: ${fullAnalyzed} · Energy: ${energyFixed} · Grid: ${gridFixed} · Migration: ${migrated} · Skip: ${skipped} · Fehler: ${errors} · ${fmtTime(totalSec)}`
         );
     }
 
@@ -684,62 +960,7 @@ export default function TrackList({
                                     ✏️
                                 </button>
                                 <strong>{track.title}</strong>
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (!track.url) { setAnalysisDebugMessage("Kein Datei-Pfad vorhanden."); return; }
-                                        setAnalysisDebugMessage("Analyse gestartet…");
-                                        const updatedTracks = await analyzeTrack(track, tracks);
-                                        saveLibrary(updatedTracks, musicFolder);
-                                        const updated = updatedTracks.find(t => t.id === track.id);
-                                        if (updated?.analysis?.status === "done") {
-                                            setAnalysisDebugMessage(`BPM ${updated.bpm} · Key ${updated.key} · Energy ${updated.energy}`);
-                                        } else {
-                                            setAnalysisDebugMessage("Analyse fehlgeschlagen.");
-                                        }
-                                    }}
-                                    style={{ marginLeft: "2px", background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#86efac" }}
-                                    title="Track analysieren (Essentia-Pfad)"
-                                >
-                                    ⚡
-                                </button>
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (!track.url) return;
-                                        setAnalysisDebugMessage("Essentia Test läuft… (Konsole beobachten)");
-                                        try {
-                                            const essentiaResult = await runEssentiaTest(track.url, {
-                                                bpm: track.bpm,
-                                                detectedBpm: track.analysis?.detectedBpm,
-                                                beatGridStartSeconds: track.analysis?.beatGridStartSeconds,
-                                                key: track.key,
-                                            });
-                                            if (essentiaResult?.firstBeatSeconds !== undefined) {
-                                                const updatedTrack: Track = {
-                                                    ...track,
-                                                    analysis: {
-                                                        ...(track.analysis ?? { status: "done" as const, cuePoints: [], loops: [] }),
-                                                        beatGridStartSeconds: essentiaResult.firstBeatSeconds,
-                                                    },
-                                                };
-                                                const updatedTracks = tracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
-                                                setTracks(updatedTracks);
-                                                saveLibrary(updatedTracks, musicFolder);
-                                                onTrackUpdated?.(updatedTrack);
-                                                setAnalysisDebugMessage(`Essentia GridStart: ${essentiaResult.firstBeatSeconds.toFixed(4)} s – übernommen`);
-                                            } else {
-                                                setAnalysisDebugMessage("Essentia Test abgeschlossen – siehe Konsole");
-                                            }
-                                        } catch (err) {
-                                            setAnalysisDebugMessage("Essentia Fehler: " + String(err));
-                                        }
-                                    }}
-                                    style={{ marginLeft: "2px", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#fbbf24" }}
-                                    title="Essentia.js Vergleichsanalyse (Konsole)"
-                                >
-                                    🧪
-                                </button>
+                                {(() => { const b = getAnalysisBadge(track); return <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: "4px", background: b.bg, border: `1px solid ${b.border}`, color: b.color, whiteSpace: "nowrap" }}>{b.label}</span>; })()}
                                 <button
                                     onClick={e => { e.stopPropagation(); setSuggestMenuTrackId(suggestMenuTrackId === track.id ? null : track.id); }}
                                     style={{ marginLeft: "2px", background: suggestMenuTrackId === track.id ? "rgba(56,189,248,0.25)" : "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.4)", borderRadius: "4px", cursor: "pointer", padding: "2px 6px", color: "#38bdf8" }}
