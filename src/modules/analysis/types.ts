@@ -41,6 +41,31 @@ export type CuePoint = {
         | "custom";
 };
 
+export type VocalCandidateRegion = {
+    startSeconds: number;
+    endSeconds: number;
+    confidence: number;
+    reason: string;
+};
+
+export type AlignedVocalRegion = {
+    startSeconds: number;
+    endSeconds: number;
+    originalStartSeconds: number;
+    originalEndSeconds: number;
+    startBeatIndex: number;
+    endBeatIndex: number;
+    confidence: number;
+    phraseStart8BeatIndex:  number | null;
+    phraseStart8Seconds:    number | null;
+    phraseStart16BeatIndex: number | null;
+    phraseStart16Seconds:   number | null;
+    phraseEnd8BeatIndex:    number | null;
+    phraseEnd8Seconds:      number | null;
+    phraseEnd16BeatIndex:   number | null;
+    phraseEnd16Seconds:     number | null;
+};
+
 export type AudioAnalysisResult = {
     key?: string;
     scale?: string;
@@ -66,4 +91,19 @@ export type AudioAnalysisResult = {
     cuePoints: CuePoint[];
     beatGridStartSeconds: number;
     activityRegions?: ActivityRegion[];
+    vocalCandidateRegions?: VocalCandidateRegion[];
+    alignedVocalRegions?: AlignedVocalRegion[];
+    vocalMixZones?: VocalMixZone[];
+};
+
+export type VocalMixZone = {
+    type: "mix-in" | "mix-out";
+    startSeconds: number;
+    endSeconds: number;
+    anchorSeconds: number;
+    anchorBeatIndex: number;
+    beatsBeforeOrAfter: 8 | 16 | 32;
+    sourceVocalRegionIndex: number;
+    confidence: number;
+    reason: string;
 };

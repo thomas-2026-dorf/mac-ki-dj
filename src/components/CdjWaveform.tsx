@@ -24,6 +24,8 @@ type Props = {
     mixOutEndSeconds?: number;
     activityRegions?: { startSeconds: number; endSeconds: number; confidence: number }[];
     preActivityBeatCount?: number;
+    alignedVocalRegions?: { startSeconds: number; endSeconds: number }[];
+    vocalMixZones?: { type: "mix-in" | "mix-out"; startSeconds: number; endSeconds: number }[];
 };
 
 export default function CdjWaveform({
@@ -32,6 +34,7 @@ export default function CdjWaveform({
     phaseOffset: externalPhaseOffset,
     mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds,
     activityRegions, preActivityBeatCount,
+    alignedVocalRegions, vocalMixZones,
 }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -75,6 +78,11 @@ export default function CdjWaveform({
         canvas.width = canvasW;
         canvas.height = HEIGHT;
 
+        console.log("[WaveformDebug]", {
+            alignedVocalRegions: alignedVocalRegions?.length,
+            vocalMixZones: vocalMixZones?.length,
+        });
+
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
@@ -103,7 +111,6 @@ export default function CdjWaveform({
             ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke();
         }
 
-        // Mix-Zonen-Overlays (unter Labels und Grid-Linien)
         const drawZone = (start: number | undefined, end: number | undefined, color: string) => {
             if (start === undefined || end === undefined) return;
             const x0 = Math.max(0, toX(start));
@@ -112,35 +119,22 @@ export default function CdjWaveform({
             ctx.fillStyle = color;
             ctx.fillRect(x0, 0, x1 - x0, H);
         };
-        drawZone(mixInStartSeconds, mixInEndSeconds, "rgba(0,150,255,0.18)");
-        drawZone(mixOutStartSeconds, mixOutEndSeconds, "rgba(255,80,80,0.18)");
 
-        // Pre-Activity-Overlays (gelb, vor jeder ActivityRegion)
-        if (activityRegions && preActivityBeatCount && preActivityBeatCount > 0) {
-            const preDuration = bpm && bpm > 0
-                ? preActivityBeatCount * (60 / bpm)
-                : 8;
-            for (const region of activityRegions) {
-                const preStart = Math.max(0, region.startSeconds - preDuration);
-                const x0 = Math.max(0, toX(preStart));
-                const x1 = Math.min(W, toX(region.startSeconds));
-                if (x1 <= x0) continue;
-                ctx.fillStyle = "rgba(255,210,0,0.22)";
-                ctx.fillRect(x0, 0, x1 - x0, H);
+        // Vocal-Regionen (gelb)
+        if (alignedVocalRegions) {
+            for (const region of alignedVocalRegions) {
+                drawZone(region.startSeconds, region.endSeconds, "rgba(255,210,0,0.22)");
             }
         }
 
-        // Activity-Region-Overlays (grün, Opacity abhängig von confidence)
-        if (activityRegions) {
-            for (const region of activityRegions) {
-                const x0 = Math.max(0, toX(region.startSeconds));
-                const x1 = Math.min(W, toX(region.endSeconds));
-                if (x1 <= x0) continue;
-                const opacity = 0.1 + region.confidence * 0.3;
-                ctx.fillStyle = `rgba(0,200,100,${opacity.toFixed(3)})`;
-                ctx.fillRect(x0, 0, x1 - x0, H);
+        // Mix-In / Mix-Out aus Vocal-Analyse (blau / rot)
+        if (vocalMixZones) {
+            for (const zone of vocalMixZones) {
+                drawZone(zone.startSeconds, zone.endSeconds,
+                    zone.type === "mix-in" ? "rgba(0,120,255,0.28)" : "rgba(255,60,60,0.28)");
             }
         }
+
 
         // Label-Blöcke links
         ctx.font = "bold 9px monospace";
@@ -264,7 +258,7 @@ export default function CdjWaveform({
         ctx.lineTo(cx, H);
         ctx.stroke();
 
-    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat, phaseOffset, mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds, activityRegions, preActivityBeatCount]);
+    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat, phaseOffset, mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds, activityRegions, preActivityBeatCount, alignedVocalRegions, vocalMixZones]);
 
     // ── Maus-Interaktion ─────────────────────────────────────────────────────
 

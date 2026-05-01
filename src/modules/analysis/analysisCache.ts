@@ -25,12 +25,15 @@ export async function loadAnalysisCache(inputPath: string) {
     }
 
     const raw = await invoke<string>("tkdj_read_text_file", { path: analysisPath });
-    return JSON.parse(raw) as AudioAnalysisResult;
+    const parsed = JSON.parse(raw) as AudioAnalysisResult;
+    console.log("[CacheLoadKeys]", Object.keys(parsed));
+    return parsed;
 }
 
 export async function saveAnalysisCache(inputPath: string, analysis: AudioAnalysisResult) {
     const analysisPath = getAnalysisCachePath(inputPath);
 
+    console.log("[CacheSaveKeys]", Object.keys(analysis));
     await invoke<string>("tkdj_write_text_file", {
         path: analysisPath,
         content: JSON.stringify(analysis, null, 2),

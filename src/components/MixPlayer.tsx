@@ -193,9 +193,13 @@ export default function MixPlayer({
     }, [current?.id]);
 
     const [activityRegions, setActivityRegions] = useState<{ startSeconds: number; endSeconds: number; confidence: number }[] | null>(null);
+    const [alignedVocalRegions, setAlignedVocalRegions] = useState<{ startSeconds: number; endSeconds: number }[] | null>(null);
+    const [vocalMixZones, setVocalMixZones] = useState<{ type: "mix-in" | "mix-out"; startSeconds: number; endSeconds: number }[] | null>(null);
 
     useEffect(() => {
         setActivityRegions(null);
+        setAlignedVocalRegions(null);
+        setVocalMixZones(null);
         if (!current) return;
         // Bevorzugt aus Cache laden (enthält activityRegions nach Neuanalyse)
         const logRegions = (regions: typeof activityRegions) => {
@@ -209,32 +213,39 @@ export default function MixPlayer({
         if (current.url) {
             loadAnalysisCache(current.url)
                 .then(cached => {
-                    if (cached?.activityRegions && cached.activityRegions.length > 0) {
-                        setActivityRegions(cached.activityRegions);
-                        logRegions(cached.activityRegions);
-                    } else if ((current.analysis as any)?.activityRegions) {
-                        const regions = (current.analysis as any).activityRegions;
-                        setActivityRegions(regions);
-                        logRegions(regions);
+                    console.log("[PlayerAnalysisKeys] current.analysis:", Object.keys((current.analysis as any) ?? {}));
+                    console.log("[PlayerAnalysisKeys] cached:", Object.keys(cached ?? {}));
+                    const src = (cached && Object.keys(cached).length > 0) ? cached : (current.analysis as any);
+                    if (src?.activityRegions?.length > 0) {
+                        setActivityRegions(src.activityRegions);
+                        logRegions(src.activityRegions);
                     } else {
                         logRegions(null);
                     }
+                    setAlignedVocalRegions(src?.alignedVocalRegions ?? null);
+                    setVocalMixZones(src?.vocalMixZones ?? null);
                 })
                 .catch(() => {
-                    if ((current.analysis as any)?.activityRegions) {
-                        const regions = (current.analysis as any).activityRegions;
-                        setActivityRegions(regions);
-                        logRegions(regions);
+                    const src = current.analysis as any;
+                    if (src?.activityRegions) {
+                        setActivityRegions(src.activityRegions);
+                        logRegions(src.activityRegions);
                     } else {
                         logRegions(null);
                     }
+                    setAlignedVocalRegions(src?.alignedVocalRegions ?? null);
+                    setVocalMixZones(src?.vocalMixZones ?? null);
                 });
-        } else if ((current.analysis as any)?.activityRegions) {
-            const regions = (current.analysis as any).activityRegions;
-            setActivityRegions(regions);
-            logRegions(regions);
         } else {
-            logRegions(null);
+            const src = current.analysis as any;
+            if (src?.activityRegions) {
+                setActivityRegions(src.activityRegions);
+                logRegions(src.activityRegions);
+            } else {
+                logRegions(null);
+            }
+            setAlignedVocalRegions(src?.alignedVocalRegions ?? null);
+            setVocalMixZones(src?.vocalMixZones ?? null);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [current?.id]);
@@ -569,6 +580,8 @@ export default function MixPlayer({
                         mixOutEndSeconds={deckAMixOutEnd}
                         activityRegions={activityRegions ?? undefined}
                         preActivityBeatCount={16}
+                        alignedVocalRegions={alignedVocalRegions ?? undefined}
+                        vocalMixZones={vocalMixZones ?? undefined}
                     />
                     {/* BeatGridDebug ausgeblendet */}
                 </div>

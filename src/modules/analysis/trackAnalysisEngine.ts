@@ -55,13 +55,17 @@ export async function prepareTrackAnalysis(inputMp3: string, options?: { forceFr
                 beats:            e.beats,
                 cuePoints,
                 beatGridStartSeconds: e.firstBeatSeconds,
-                activityRegions:  e.activityRegions,
+                activityRegions:       e.activityRegions,
+                vocalCandidateRegions: e.vocalCandidateRegions,
+                alignedVocalRegions:   e.alignedVocalRegions,
+                vocalMixZones:         e.vocalMixZones,
             };
 
             console.log(
                 `[Analyse] Essentia-Pfad OK: BPM ${e.bpm.toFixed(2)} · Key ${e.key} ${e.scale}` +
                 ` · firstBeat ${e.firstBeatSeconds.toFixed(3)}s · Dauer ${e.durationSeconds.toFixed(1)}s`
             );
+            console.log("[EngineKeys]", Object.keys(analysis));
         } catch (essentiaErr) {
             // Fallback: WAV-Pfad (optional, nur bei Essentia-Fehler)
             console.warn("[Analyse] Essentia fehlgeschlagen, WAV-Fallback:", essentiaErr);
