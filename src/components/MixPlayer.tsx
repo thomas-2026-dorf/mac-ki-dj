@@ -4,7 +4,6 @@ import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
 import { decideTransition } from "../modules/transition/autoMixPlanner";
 import type { TransitionPoint } from "../types/track";
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
-import PlayerWaveform from "./PlayerWaveform";
 import CdjWaveform from "./CdjWaveform";
 import { computeGridOffset, GRID_OFFSET_TOL_ENG, GRID_OFFSET_TOL_WIDE } from "../modules/analysis/gridOffsetAnalyzer";
 
@@ -43,6 +42,8 @@ type MixPlayerProps = {
     onReset: () => void;
     onSaveTransitionPoint?: (point: TransitionPoint) => void;
     onRemoveTransitionPoint?: (pointId: string) => void;
+    onSaveTransitionPointB?: (point: TransitionPoint) => void;
+    onRemoveTransitionPointB?: (pointId: string) => void;
     onSetVolume?: (v: number) => void;
 };
 
@@ -58,6 +59,8 @@ export default function MixPlayer({
     onReset,
     onSaveTransitionPoint,
     onRemoveTransitionPoint,
+    onSaveTransitionPointB,
+    onRemoveTransitionPointB,
     onSetVolume,
 }: MixPlayerProps) {
     const status = state?.status ?? "idle";
@@ -359,18 +362,77 @@ export default function MixPlayer({
                     </span>
                     {next ? (
                         <>
-                            <span className="mix-track-title mix-track-title-sm">{next.title}</span>
-                            <span className="mix-track-meta">{next.artist} · {next.bpm} BPM · {next.key} · NRG {next.energy}</span>
+                            <span className="mix-track-title">{next.title}</span>
+                            <span className="mix-track-meta">
+                                {next.artist} · {next.bpm} BPM · {next.key} · NRG {next.energy}
+                                <span className="mix-timecode">0:00 / {formatTime(nxtDur)}</span>
+                            </span>
                         </>
                     ) : (
                         <span className="mix-track-empty">Kein nächster Track bereit</span>
                     )}
                 </div>
+                <div className="mix-controls" />
             </div>
 
             {next && nxtDur > 0 && (
+                <div className="mix-seekbar">
+                    <div className="mix-seekbar-fill" style={{ width: "0%" }} />
+                </div>
+            )}
+
+            {next && onSaveTransitionPointB && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums", marginRight: "4px" }}>
+                        @ 0:00
+                    </span>
+                    {TYPE_OPTIONS.map(opt => {
+                        const c = ROLE_COLORS[opt.role];
+                        return (
+                            <button
+                                key={opt.key}
+                                onClick={() => onSaveTransitionPointB({
+                                    id: `B-manual-${opt.role}-0`,
+                                    role: opt.role,
+                                    bars: opt.bars,
+                                    timeSeconds: 0,
+                                    source: "manual",
+                                    label: opt.label,
+                                })}
+                                style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: "4px", color: c.text, padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
+            {next && onRemoveTransitionPointB && (next.transitionPoints ?? []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px", background: "rgba(15,23,42,0.6)" }}>
+                    <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
+                    {(next.transitionPoints ?? []).map(p => {
+                        const c = ROLE_COLORS[p.role];
+                        return (
+                            <span
+                                key={p.id}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
+                            >
+                                {p.label ?? p.role} @ {formatTime(p.timeSeconds)}
+                                <button
+                                    onClick={() => onRemoveTransitionPointB(p.id)}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
+                                    title="Entfernen"
+                                >×</button>
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
+
+            {next && nxtDur > 0 && (
                 <div className="mix-waveform-wrap mix-waveform-wrap-next">
-                    <PlayerWaveform
+                    <CdjWaveform
                         trackId={next.id}
                         waveform={waveB}
                         duration={nxtDur}
@@ -378,6 +440,7 @@ export default function MixPlayer({
                         onSeek={() => {}}
                         bpm={next.analysis?.detectedBpm ?? next.bpm}
                         beatGridStartSeconds={next.analysis?.beatGridStartSeconds}
+                        beats={next.analysis?.beats}
                     />
                 </div>
             )}

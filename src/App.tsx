@@ -34,6 +34,8 @@ function App() {
   const [mixState, setMixState] = useState<MixState | null>(null);
   const [currentTrackTPs, setCurrentTrackTPs] = useState<TransitionPoint[] | null>(null);
   const currentTrackIdRef = useRef<string | null>(null);
+  const [nextTrackTPs, setNextTrackTPs] = useState<TransitionPoint[] | null>(null);
+  const nextTrackIdRef = useRef<string | null>(null);
 
   // Waveform-Override: automatisch aus File-Cache laden wenn Track keine Waveform hat
   const [currentWaveformOverride, setCurrentWaveformOverride] = useState<number[] | null>(null);
@@ -159,6 +161,38 @@ function App() {
     handleTrackUpdated({ ...track, transitionPoints: updated });
   }
 
+  function handleRemoveTransitionPointB(pointId: string) {
+    const track = mixState?.nextTrack;
+    if (!track) return;
+    const existing = nextTrackTPs ?? track.transitionPoints ?? [];
+    const updated = existing.filter(p => p.id !== pointId);
+    setNextTrackTPs(updated);
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(
+      library.map(t => t.id === track.id ? { ...t, transitionPoints: updated } : t)
+    ));
+    handleTrackUpdated({ ...track, transitionPoints: updated });
+  }
+
+  function handleSaveTransitionPointB(point: TransitionPoint) {
+    const track = mixState?.nextTrack;
+    if (!track) return;
+    if (nextTrackIdRef.current !== track.id) {
+      nextTrackIdRef.current = track.id;
+      setNextTrackTPs(null);
+    }
+    const existing = nextTrackTPs ?? track.transitionPoints ?? [];
+    const updated = [...existing, point];
+    setNextTrackTPs(updated);
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(
+      library.map(t => t.id === track.id ? { ...t, transitionPoints: updated } : t)
+    ));
+    handleTrackUpdated({ ...track, transitionPoints: updated });
+  }
+
   function addTrackToQueue(track: Track) {
     setQueue(prev => [...prev, track]);
   }
@@ -247,6 +281,11 @@ function App() {
     currentTrackIdRef.current = currentTrackId;
     if (currentTrackTPs !== null) setCurrentTrackTPs(null);
   }
+  const nextTrackId = mixState?.nextTrack?.id ?? null;
+  if (nextTrackIdRef.current !== nextTrackId) {
+    nextTrackIdRef.current = nextTrackId;
+    if (nextTrackTPs !== null) setNextTrackTPs(null);
+  }
 
   // Waveform + TransitionPoints in mixState einpflegen ohne Engine-State zu berühren
   const mixStateForPlayer: MixState | null = (() => {
@@ -271,6 +310,9 @@ function App() {
         analysis: { cuePoints: [], loops: [], ...next.analysis, waveform: nextWaveformOverride, status: "done" },
       };
     }
+    if (next && nextTrackTPs) {
+      next = { ...next, transitionPoints: nextTrackTPs };
+    }
 
     return { ...mixState, currentTrack: current, nextTrack: next };
   })();
@@ -288,6 +330,8 @@ function App() {
         onReset={handleReset}
         onSaveTransitionPoint={handleSaveTransitionPoint}
         onRemoveTransitionPoint={handleRemoveTransitionPoint}
+        onSaveTransitionPointB={handleSaveTransitionPointB}
+        onRemoveTransitionPointB={handleRemoveTransitionPointB}
         onSetVolume={v => mixEngineRef.current?.setVolume(v)}
       />
 
