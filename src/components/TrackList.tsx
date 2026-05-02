@@ -41,6 +41,7 @@ type Mp3TagInfo = {
     year?: number;
     comment?: string;
     duration_seconds?: number;
+    energy_level?: number;
 };
 
 function parseMixedInKeyComment(comment?: string): Partial<Pick<Track, "bpm" | "key" | "energy">> {
@@ -331,6 +332,7 @@ export default function TrackList({
                 energy: finalEnergy || undefined,
                 cuePoints: track.analysis?.cuePoints ?? [],
                 loops: track.analysis?.loops ?? [],
+                activityRegions: a.activityRegions,
             },
         };
         const updatedTracks = currentTracks.map(t => t.id === updatedTrack.id ? updatedTrack : t);
@@ -598,7 +600,7 @@ export default function TrackList({
                 artist: externalData?.artist || tagData.artist || "-",
                 bpm: externalData?.bpm || mixedInKeyData.bpm || 0,
                 key: externalData?.key || mixedInKeyData.key || "-",
-                energy: externalData?.energy || mixedInKeyData.energy || 0,
+                energy: externalData?.energy || mixedInKeyData.energy || tagData.energy_level || savedByUrl.get(url)?.energy || 0,
                 duration:
                     externalData?.duration ||
                     formatDurationFromSeconds(tagData.duration_seconds),

@@ -1,4 +1,5 @@
 import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
+import type { ActivityRegion } from "../modules/analysis/types";
 
 export type TrackAnalysisStatus = "none" | "pending" | "done" | "error";
 
@@ -103,6 +104,8 @@ export type TrackAnalysis = {
         bpmCandidates: number[];
         tempogramCandidates: number[];
     };
+
+    activityRegions?: ActivityRegion[];
 
     bpmSource?: "auto" | "manual" | "external";
     bpmConfidence?: "high" | "medium" | "low";

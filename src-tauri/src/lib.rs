@@ -28,6 +28,7 @@ struct Mp3TagInfo {
     year: Option<u32>,
     comment: Option<String>,
     duration_seconds: Option<u64>,
+    energy_level: Option<u8>,
 }
 
 #[tauri::command]
@@ -355,6 +356,10 @@ fn read_mp3_tags(path: String) -> Result<Mp3TagInfo, String> {
         .get_string(&ItemKey::Comment)
         .map(|value| value.to_string());
 
+    let energy_level = tag
+        .get_string(&ItemKey::Unknown(String::from("EnergyLevel")))
+        .and_then(|v| v.trim().parse::<u8>().ok());
+
     let artist = tag
         .get_string(&ItemKey::TrackArtist)
         .map(|value| value.to_string())
@@ -368,6 +373,7 @@ fn read_mp3_tags(path: String) -> Result<Mp3TagInfo, String> {
         year: tag.year(),
         comment,
         duration_seconds: Some(tagged_file.properties().duration().as_secs()),
+        energy_level,
     })
 }
 
