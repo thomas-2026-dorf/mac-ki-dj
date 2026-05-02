@@ -321,6 +321,7 @@ export default function TrackList({
                 camelotKey: a.camelotKey ?? undefined,
                 gridOffset,
                 waveform: a.waveform,
+                waveformPeaks: a.waveformPeaks,
                 detectedBpm: floatBpm,
                 beatGridStartSeconds: gridStart,
                 beats: a.beats,

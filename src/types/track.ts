@@ -1,3 +1,5 @@
+import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
+
 export type TrackAnalysisStatus = "none" | "pending" | "done" | "error";
 
 export type TrackCuePoint = {
@@ -80,6 +82,7 @@ export type TrackAnalysis = {
      * Wir nutzen sie später nicht mehr als Hauptstrategie.
      */
     waveform?: number[];
+    waveformPeaks?: WaveformPeaks;
     detectedBpm?: number;
     detectedKey?: string;
     beatGridStartSeconds?: number;

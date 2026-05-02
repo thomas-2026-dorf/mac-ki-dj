@@ -66,6 +66,8 @@ export type AlignedVocalRegion = {
     phraseEnd16Seconds:     number | null;
 };
 
+import type { WaveformPeaks } from "./waveformPeaks";
+
 export type AudioAnalysisResult = {
     key?: string;
     scale?: string;
@@ -87,6 +89,7 @@ export type AudioAnalysisResult = {
     onsetCount: number;
 
     waveform: number[];
+    waveformPeaks?: WaveformPeaks;
     beats?: number[];
     cuePoints: CuePoint[];
     beatGridStartSeconds: number;

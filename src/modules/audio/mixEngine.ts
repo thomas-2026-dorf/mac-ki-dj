@@ -11,7 +11,9 @@ export type MixState = {
     nextTrack: Track | null;
     currentTime: number;
     currentDuration: number;
+    nextTime: number;
     nextDuration: number;
+    nextPlaying: boolean;
     transitionPlan: MixTransitionPlan | null;
     timeToTransition: number | null;
 };
@@ -48,6 +50,28 @@ export class MixEngine {
 
     private get cur(): Slot { return this.slots[this.activeSlot]; }
     private get nxt(): Slot { return this.slots[1 - this.activeSlot]; }
+
+    async loadOnly(track: Track): Promise<void> {
+        if (!track.url) return;
+        this.status = "loading";
+        this.emitState();
+        try {
+            const wavPath = await ensureWavCache(track.url);
+            this.cur.audio.setGain(1);
+            await this.cur.audio.load(wavPath);
+            this.cur.track = track;
+            this.cur.plan = null;
+            this.transitionStarted = false;
+            this.cur.audio.onEnded(() => this.handleTrackEnded());
+        } catch (e) {
+            console.error("loadOnly failed:", e);
+            this.status = "idle";
+            this.emitState();
+            return;
+        }
+        this.status = "paused";
+        this.emitState();
+    }
 
     async loadAndPlay(track: Track): Promise<void> {
         if (!track.url) return;
@@ -116,7 +140,7 @@ export class MixEngine {
     }
 
     private tick(): void {
-        if (this.status !== "playing" && this.status !== "transitioning") return;
+        if (this.status !== "playing" && this.status !== "transitioning" && !this.nxt.audio.isPlaying()) return;
         this.tickCount++;
         const t = this.cur.audio.getTime();
         const plan = this.cur.plan;
@@ -215,6 +239,43 @@ export class MixEngine {
         this.startTransition({ ...plan, type: "cut", blendDurationSeconds: 0.05 });
     }
 
+    resumeNext(): void {
+        if (!this.nxt.track) return;
+        this.nxt.audio.setGain(0.7);
+        this.nxt.audio.play();
+        this.startTick();
+        this.emitState();
+    }
+
+    pauseNext(): void {
+        if (!this.nxt.track) return;
+        this.nxt.audio.pause();
+        this.nxt.audio.setGain(0);
+        if (this.status !== "playing" && this.status !== "transitioning") {
+            this.stopTick();
+        }
+        this.emitState();
+    }
+
+    stopNext(): void {
+        this.prepareGen++;
+        this.nxt.audio.pause();
+        this.nxt.audio.setGain(1);
+        this.nxt.track = null;
+        this.nxt.plan = null;
+        this.cur.plan = null;
+        if (this.status !== "playing" && this.status !== "transitioning") {
+            this.stopTick();
+        }
+        this.emitState();
+    }
+
+    seekNext(time: number): void {
+        if (!this.nxt.track) return;
+        this.nxt.audio.seek(time);
+        this.emitState();
+    }
+
     seek(time: number): void {
         if (this.status === "idle" || this.status === "loading") return;
         this.cur.audio.seek(time);
@@ -254,7 +315,9 @@ export class MixEngine {
             nextTrack: this.nxt.track,
             currentTime: t,
             currentDuration: this.cur.audio.getDuration(),
+            nextTime: this.nxt.audio.getTime(),
             nextDuration: this.nxt.audio.getDuration(),
+            nextPlaying: this.nxt.audio.isPlaying(),
             transitionPlan: plan,
             timeToTransition,
         };

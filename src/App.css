@@ -1424,6 +1424,16 @@ body {
   padding: 2px 16px 6px;
 }
 
+.mix-waveform-empty {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #334155;
+  letter-spacing: 0.05em;
+}
+
 .mix-waveform-wrap-next {
   padding-bottom: 10px;
 }

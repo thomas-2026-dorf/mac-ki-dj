@@ -35,6 +35,7 @@ function transitionLabel(plan: MixTransitionPlan): string {
 
 type MixPlayerProps = {
     state: MixState | null;
+    // Deck A
     onPlay: () => void;
     onPause: () => void;
     onSkip: () => void;
@@ -42,6 +43,11 @@ type MixPlayerProps = {
     onSeek: (time: number) => void;
     onStop: () => void;
     onReset: () => void;
+    // Deck B
+    onDeckBPlay?: () => void;
+    onDeckBPause?: () => void;
+    onDeckBStop?: () => void;
+    onDeckBSeek?: (time: number) => void;
     onSaveTransitionPoint?: (point: TransitionPoint) => void;
     onRemoveTransitionPoint?: (pointId: string) => void;
     onSaveTransitionPointB?: (point: TransitionPoint) => void;
@@ -59,6 +65,10 @@ export default function MixPlayer({
     onSeek,
     onStop,
     onReset,
+    onDeckBPlay,
+    onDeckBPause,
+    onDeckBStop,
+    onDeckBSeek,
     onSaveTransitionPoint,
     onRemoveTransitionPoint,
     onSaveTransitionPointB,
@@ -74,6 +84,8 @@ export default function MixPlayer({
 
     const curTime = state?.currentTime ?? 0;
     const curDur = state?.currentDuration ?? 0;
+    const nxtTime = state?.nextTime ?? 0;
+    const nxtPlaying = state?.nextPlaying ?? false;
     const nxtDur = state?.nextDuration ?? 0;
 
     const waveA = current?.analysis?.waveform ?? [];
@@ -253,16 +265,26 @@ export default function MixPlayer({
     const [metroOn, setMetroOn] = useState(false);
     const [downbeatSuggestion, setDownbeatSuggestion] = useState<{ phase: 0|1|2|3; confidence: number } | null>(null);
     const [testOffset, setTestOffset] = useState(0);
+    const [testOffsetB, setTestOffsetB] = useState(0);
     const [metroBeat, setMetroBeat] = useState<{ n: number; t: number } | null>(null);
+    const [metroBeatB, setMetroBeatB] = useState<{ n: number; t: number } | null>(null);
     const [debugGridOffsetSec, setDebugGridOffsetSec] = useState<number | null>(null);
     const audioCtxRef  = useRef<AudioContext | null>(null);
-    const lastBeatNRef = useRef<number>(-1);
+    const lastBeatNRef  = useRef<number>(-1);
+    const lastBeatNBRef = useRef<number>(-1);
 
     useEffect(() => {
         lastBeatNRef.current = -1;
         setDebugGridOffsetSec(null);
     }, [current?.id]);
-    useEffect(() => { lastBeatNRef.current = -1; }, [metroOn]);
+    useEffect(() => {
+        lastBeatNBRef.current = -1;
+        setTestOffsetB(0);
+    }, [next?.id]);
+    useEffect(() => {
+        lastBeatNRef.current  = -1;
+        lastBeatNBRef.current = -1;
+    }, [metroOn]);
 
     useEffect(() => {
         if (!metroOn || !isPlaying) return;
@@ -287,6 +309,29 @@ export default function MixPlayer({
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
         osc.start(now); osc.stop(now + 0.06);
     }, [curTime, metroOn, isPlaying, current, debugGridOffsetSec]);
+
+    useEffect(() => {
+        if (!metroOn || !nxtPlaying) return;
+        const bpm = next?.analysis?.detectedBpm ?? next?.bpm ?? 0;
+        const gridStart = next?.analysis?.beatGridStartSeconds;
+        if (!bpm || gridStart === undefined) return;
+        const beatN = Math.floor((nxtTime - gridStart) / (60 / bpm));
+        if (beatN < 0 || beatN === lastBeatNBRef.current) return;
+        lastBeatNBRef.current = beatN;
+        setMetroBeatB({ n: beatN, t: nxtTime });
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+        const ac = audioCtxRef.current;
+        const osc  = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        const isDown = beatN % 4 === 0;
+        osc.type = "square";
+        osc.frequency.value = isDown ? 1050 : 660;
+        const now = ac.currentTime;
+        gain.gain.setValueAtTime(isDown ? 1.0 : 0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.start(now); osc.stop(now + 0.06);
+    }, [nxtTime, metroOn, nxtPlaying, next]);
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
@@ -409,24 +454,23 @@ export default function MixPlayer({
                 </div>
             </div>
 
-            {current && curDur > 0 && (
-                <div
-                    className="mix-seekbar"
-                    onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-                        onSeek(ratio * curDur);
-                    }}
-                >
-                    <div className="mix-seekbar-fill" style={{ width: `${(curTime / curDur) * 100}%` }} />
-                    {plan && (
-                        <div
-                            className="mix-seekbar-marker"
-                            style={{ left: `${(plan.outroStartSeconds / curDur) * 100}%` }}
-                        />
-                    )}
-                </div>
-            )}
+            <div
+                className="mix-seekbar"
+                onClick={(e) => {
+                    if (!current || curDur <= 0) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                    onSeek(ratio * curDur);
+                }}
+            >
+                <div className="mix-seekbar-fill" style={{ width: curDur > 0 ? `${(curTime / curDur) * 100}%` : "0%" }} />
+                {plan && curDur > 0 && (
+                    <div
+                        className="mix-seekbar-marker"
+                        style={{ left: `${(plan.outroStartSeconds / curDur) * 100}%` }}
+                    />
+                )}
+            </div>
 
             {current && onSaveTransitionPoint && (
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
@@ -546,47 +590,49 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {current && curDur > 0 && (() => {
-                const deckABpm = current.analysis?.detectedBpm ?? current.bpm ?? 0;
-                const deckABeatDur = deckABpm > 0 ? 60 / deckABpm : 0;
-                const deckAMixOutEnd: number =
-                    current.transitionPoints?.find(p => p.role === "loop-out" || p.role === "cut-out")?.timeSeconds
-                    ?? current.outroStartSeconds
-                    ?? current.analysis?.outroStartSeconds
-                    ?? curDur;
-                const deckAMixOutStart = Math.max(0, deckAMixOutEnd - 64 * deckABeatDur);
-                const deckAMixInStart = 0;
-                const deckAMixInEnd = 64 * deckABeatDur;
-                return (
-                <div className="mix-waveform-wrap">
-                    <CdjWaveform
-                        trackId={current.id}
-                        waveform={waveA}
-                        duration={curDur}
-                        currentTime={curTime}
-                        onSeek={onSeek}
-                        bpm={current.analysis?.detectedBpm ?? current.bpm}
-                        beatGridStartSeconds={
-                            debugGridOffsetSec !== null && current.analysis?.beatGridStartSeconds !== undefined
-                                ? current.analysis.beatGridStartSeconds + debugGridOffsetSec
-                                : current.analysis?.beatGridStartSeconds
-                        }
-                        beats={current.analysis?.beats}
-                        metroBeat={metroBeat}
-                        phaseOffset={testOffset}
-                        mixInStartSeconds={deckAMixInStart}
-                        mixInEndSeconds={deckAMixInEnd}
-                        mixOutStartSeconds={deckAMixOutStart}
-                        mixOutEndSeconds={deckAMixOutEnd}
-                        activityRegions={activityRegions ?? undefined}
-                        preActivityBeatCount={16}
-                        alignedVocalRegions={alignedVocalRegions ?? undefined}
-                        vocalMixZones={vocalMixZones ?? undefined}
-                    />
-                    {/* BeatGridDebug ausgeblendet */}
-                </div>
-                );
-            })()}
+            <div className="mix-waveform-wrap">
+                {current && curDur > 0 ? (() => {
+                    const deckABpm = current.analysis?.detectedBpm ?? current.bpm ?? 0;
+                    const deckABeatDur = deckABpm > 0 ? 60 / deckABpm : 0;
+                    const deckAMixOutEnd: number =
+                        current.transitionPoints?.find(p => p.role === "loop-out" || p.role === "cut-out")?.timeSeconds
+                        ?? current.outroStartSeconds
+                        ?? current.analysis?.outroStartSeconds
+                        ?? curDur;
+                    const deckAMixOutStart = Math.max(0, deckAMixOutEnd - 64 * deckABeatDur);
+                    const deckAMixInStart = 0;
+                    const deckAMixInEnd = 64 * deckABeatDur;
+                    return (
+                        <CdjWaveform
+                            trackId={current.id}
+                            waveform={waveA}
+                            waveformPeaks={current.analysis?.waveformPeaks}
+                            duration={curDur}
+                            currentTime={curTime}
+                            onSeek={onSeek}
+                            bpm={current.analysis?.detectedBpm ?? current.bpm}
+                            beatGridStartSeconds={
+                                debugGridOffsetSec !== null && current.analysis?.beatGridStartSeconds !== undefined
+                                    ? current.analysis.beatGridStartSeconds + debugGridOffsetSec
+                                    : current.analysis?.beatGridStartSeconds
+                            }
+                            beats={current.analysis?.beats}
+                            metroBeat={metroBeat}
+                            phaseOffset={testOffset}
+                            mixInStartSeconds={deckAMixInStart}
+                            mixInEndSeconds={deckAMixInEnd}
+                            mixOutStartSeconds={deckAMixOutStart}
+                            mixOutEndSeconds={deckAMixOutEnd}
+                            activityRegions={activityRegions ?? undefined}
+                            preActivityBeatCount={16}
+                            alignedVocalRegions={alignedVocalRegions ?? undefined}
+                            vocalMixZones={vocalMixZones ?? undefined}
+                        />
+                    );
+                })() : (
+                    <div className="mix-waveform-empty">Kein Track geladen</div>
+                )}
+            </div>
 
             {/* ── Track B: nächster ───────────────────────────── */}
             <div className="mix-track-row mix-track-row-next">
@@ -603,26 +649,37 @@ export default function MixPlayer({
                             <span className="mix-track-title">{next.title}</span>
                             <span className="mix-track-meta">
                                 {next.artist} · {next.bpm} BPM · {next.key} · NRG {next.energy}
-                                <span className="mix-timecode">0:00 / {formatTime(nxtDur)}</span>
+                                <span className="mix-timecode">{formatTime(nxtTime)} / {formatTime(nxtDur)}</span>
                             </span>
                         </>
                     ) : (
                         <span className="mix-track-empty">Kein nächster Track bereit</span>
                     )}
                 </div>
-                <div className="mix-controls" />
+                <div className="mix-controls">
+                    {next && !nxtPlaying && (
+                        <button className="mix-btn mix-btn-play" onClick={onDeckBPlay} title="Deck B vorhören">▶</button>
+                    )}
+                    {next && nxtPlaying && (
+                        <button className="mix-btn mix-btn-pause" onClick={onDeckBPause} title="Deck B Vorhör pausieren">⏸</button>
+                    )}
+                    {(isPlaying || status === "paused") && next && (
+                        <button className="mix-btn mix-btn-skip" onClick={onSkip} title="Sofort zu Deck B wechseln">⏭</button>
+                    )}
+                    {next && (
+                        <button className="mix-btn mix-btn-stop" onClick={onDeckBStop} title="Deck B leeren">■</button>
+                    )}
+                </div>
             </div>
 
-            {next && nxtDur > 0 && (
-                <div className="mix-seekbar">
-                    <div className="mix-seekbar-fill" style={{ width: "0%" }} />
-                </div>
-            )}
+            <div className="mix-seekbar">
+                <div className="mix-seekbar-fill" style={{ width: nxtDur > 0 ? `${(nxtTime / nxtDur) * 100}%` : "0%" }} />
+            </div>
 
             {next && onSaveTransitionPointB && (
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
                     <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums", marginRight: "4px" }}>
-                        @ 0:00
+                        @ {formatTime(nxtTime)}
                     </span>
                     {TYPE_OPTIONS.map(opt => {
                         const c = ROLE_COLORS[opt.role];
@@ -630,10 +687,10 @@ export default function MixPlayer({
                             <button
                                 key={opt.key}
                                 onClick={() => onSaveTransitionPointB({
-                                    id: `B-manual-${opt.role}-0`,
+                                    id: `B-manual-${opt.role}-${nxtTime.toFixed(2)}`,
                                     role: opt.role,
                                     bars: opt.bars,
-                                    timeSeconds: 0,
+                                    timeSeconds: nxtTime,
                                     source: "manual",
                                     label: opt.label,
                                 })}
@@ -668,18 +725,47 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {next && nxtDur > 0 && (
-                <div className="mix-waveform-wrap mix-waveform-wrap-next">
+            <div className="mix-waveform-wrap mix-waveform-wrap-next">
+                {next && nxtDur > 0 ? (
                     <CdjWaveform
+                        key={next.id}
                         trackId={next.id}
                         waveform={waveB}
+                        waveformPeaks={next.analysis?.waveformPeaks}
                         duration={nxtDur}
-                        currentTime={0}
-                        onSeek={() => {}}
+                        currentTime={nxtTime}
+                        onSeek={onDeckBSeek ?? (() => {})}
                         bpm={next.analysis?.detectedBpm ?? next.bpm}
                         beatGridStartSeconds={next.analysis?.beatGridStartSeconds}
                         beats={next.analysis?.beats}
+                        metroBeat={metroBeatB}
+                        phaseOffset={testOffsetB}
                     />
+                ) : (
+                    <div className="mix-waveform-empty">Kein Track bereit</div>
+                )}
+            </div>
+
+            {next && next.analysis?.beatGridStartSeconds !== undefined && (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 16px 4px", background: "rgba(10,16,30,0.8)" }}>
+                    <span style={{ fontSize: "10px", color: "#475569" }}>Deck B Phase:</span>
+                    <button
+                        onClick={() => setTestOffsetB(o => (o - 1 + 4) % 4)}
+                        style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                    >Grid −1</button>
+                    <span style={{ fontSize: "10px", color: testOffsetB === 0 ? "#475569" : "#fbbf24", fontVariantNumeric: "tabular-nums", background: "rgba(10,20,35,0.85)", padding: "1px 5px", borderRadius: "3px" }}>
+                        {testOffsetB === 0 ? "Phase 0" : `+${testOffsetB} Beat${testOffsetB > 1 ? "s" : ""}`}
+                    </span>
+                    <button
+                        onClick={() => setTestOffsetB(o => (o + 1) % 4)}
+                        style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                    >Grid +1</button>
+                    {testOffsetB !== 0 && (
+                        <button
+                            onClick={() => setTestOffsetB(0)}
+                            style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#64748b", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                        >Reset</button>
+                    )}
                 </div>
             )}
         </div>

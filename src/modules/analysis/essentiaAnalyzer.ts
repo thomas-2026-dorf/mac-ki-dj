@@ -8,6 +8,7 @@ import { detectActivityRegions, type ActivityRegion } from "./energy";
 import { detectVocalCandidateRegions, detectMainVocalRegionsFromFrames, type VocalCandidateRegion } from "./vocalDetector";
 import { alignVocalRegionsToBeats, type AlignedVocalRegion } from "./vocalPhraseAligner";
 import { detectVocalMixZones, type VocalMixZone } from "./mixZoneDetector";
+import { buildWaveformPeaks, type WaveformPeaks } from "./waveformPeaks";
 // import { classifyVocalInstrumental } from "./vocalClassifier"; // YAMNet-Test deaktiviert
 
 const TARGET_SR = 44100;
@@ -81,6 +82,7 @@ export type EssentiaAnalysisResult = {
     vocalCandidateRegions: VocalCandidateRegion[];
     alignedVocalRegions: AlignedVocalRegion[];
     vocalMixZones: VocalMixZone[];
+    waveform?: WaveformPeaks;
 };
 
 /* YAMNet-Test deaktiviert
@@ -116,7 +118,7 @@ async function getEssentia() {
     return _essentia as InstanceType<typeof EssentiaCore>;
 }
 
-async function decodeToMono(audioBytes: Uint8Array): Promise<{ signal: Float32Array; duration: number }> {
+async function decodeToMono(audioBytes: Uint8Array): Promise<{ signal: Float32Array; duration: number; audioBuffer: AudioBuffer }> {
     const buf = audioBytes.buffer.slice(audioBytes.byteOffset, audioBytes.byteOffset + audioBytes.byteLength);
 
     const tempCtx = new AudioContext();
@@ -131,7 +133,7 @@ async function decodeToMono(audioBytes: Uint8Array): Promise<{ signal: Float32Ar
     source.connect(offCtx.destination);
     source.start(0);
     const rendered = await offCtx.startRendering();
-    return { signal: rendered.getChannelData(0), duration: rendered.duration };
+    return { signal: rendered.getChannelData(0), duration: rendered.duration, audioBuffer: rendered };
 }
 
 export async function analyzeTrackWithEssentia(audioPath: string): Promise<EssentiaAnalysisResult> {
@@ -141,8 +143,10 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
     console.log(`[Timing] Datei lesen:        ${(performance.now() - t0file).toFixed(0)} ms`);
 
     const t0decode = performance.now();
-    const { signal, duration } = await decodeToMono(audioData);
+    const { signal, duration, audioBuffer } = await decodeToMono(audioData);
     console.log(`[Timing] decodeAudioData:    ${(performance.now() - t0decode).toFixed(0)} ms`);
+    const waveform = buildWaveformPeaks(audioBuffer, 512);
+    console.log(`[WaveformPeaks] length=${waveform.length}`);
     // void runYAMNetTest(signal, duration); // YAMNet-Test deaktiviert
 
     const t0essentia = performance.now();
@@ -205,6 +209,7 @@ export async function analyzeTrackWithEssentia(audioPath: string): Promise<Essen
         vocalCandidateRegions,
         alignedVocalRegions,
         vocalMixZones,
+        waveform,
     };
     console.log("[AnalyzerReturnKeys]", Object.keys(result));
     return result;

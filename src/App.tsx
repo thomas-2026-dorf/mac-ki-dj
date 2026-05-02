@@ -43,6 +43,7 @@ function App() {
 
   const mixEngineRef = useRef<MixEngine | null>(null);
   const queueRef = useRef<Track[]>(queue);
+  const automixActiveRef = useRef(false);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
 
@@ -74,6 +75,7 @@ function App() {
     });
 
     engine.onQueueEmpty(() => {
+      if (!automixActiveRef.current) return;
       const q = queueRef.current;
       if (q.length === 0) return;
       const [first, ...rest] = q;
@@ -86,9 +88,9 @@ function App() {
     return () => engine.destroy();
   }, [feedEngine]);
 
-  // Auto-feed: wenn Engine spielt aber kein Next-Track bereit ist → Queue pumpen
-  // queue.length als Dependency damit neu hinzugefügte Songs sofort in Player 2 landen
+  // Auto-feed: wenn Automix aktiv + Engine spielt aber kein Next-Track bereit → Queue pumpen
   useEffect(() => {
+    if (!automixActiveRef.current) return;
     if (mixState?.status === "playing" && mixState.currentTrack && !mixState.nextTrack) {
       feedEngine(mixState.currentTrack);
     }
@@ -200,11 +202,21 @@ function App() {
   function handleStartAutomix() {
     const engine = mixEngineRef.current;
     const state = engine?.getState();
-    if (!engine || (state && state.status !== "idle")) return;
+    if (!engine || (state && state.status !== "idle" && state.status !== "paused")) return;
 
     const q = queueRef.current;
+
+    // Paused-State: Track ist schon geladen, nur abspielen + Queue füttern
+    if (state?.status === "paused" && state.currentTrack) {
+      automixActiveRef.current = true;
+      engine.resume();
+      feedEngine(state.currentTrack);
+      return;
+    }
+
     if (q.length === 0) return;
 
+    automixActiveRef.current = true;
     const [first, second, ...rest] = q;
     queueRef.current = second ? rest : [];
     setQueue(second ? rest : []);
@@ -242,10 +254,12 @@ function App() {
   }
 
   function handleStop() {
+    automixActiveRef.current = false;
     mixEngineRef.current?.stop();
   }
 
   function handleReset() {
+    automixActiveRef.current = false;
     mixEngineRef.current?.stop();
     setQueue([]);
   }
@@ -253,7 +267,7 @@ function App() {
   function handleLoadToPlayer1(track: Track) {
     const engine = mixEngineRef.current;
     if (!engine) return;
-    engine.loadAndPlay(track);
+    engine.loadOnly(track);
   }
 
   function handleLoadToPlayer2(track: Track) {
@@ -328,6 +342,10 @@ function App() {
         onSeek={(t) => mixEngineRef.current?.seek(t)}
         onStop={handleStop}
         onReset={handleReset}
+        onDeckBPlay={() => mixEngineRef.current?.resumeNext()}
+        onDeckBPause={() => mixEngineRef.current?.pauseNext()}
+        onDeckBStop={() => mixEngineRef.current?.stopNext()}
+        onDeckBSeek={(t) => mixEngineRef.current?.seekNext(t)}
         onSaveTransitionPoint={handleSaveTransitionPoint}
         onRemoveTransitionPoint={handleRemoveTransitionPoint}
         onSaveTransitionPointB={handleSaveTransitionPointB}

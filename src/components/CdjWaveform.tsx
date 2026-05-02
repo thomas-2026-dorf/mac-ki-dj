@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
 
 const HEIGHT = 80;
 const ZOOM_LEVELS = [1, 2, 4, 8] as const;
-// Sichtbares Zeitfenster bei Zoom 1× (Sekunden links + rechts des Cursors)
 const BASE_WINDOW_SEC = 20;
 
 type Props = {
     trackId: string;
     waveform: number[];
+    waveformPeaks?: WaveformPeaks;
     duration: number;
     currentTime: number;
     onSeek: (time: number) => void;
@@ -15,8 +16,6 @@ type Props = {
     beatGridStartSeconds?: number;
     beats?: number[];
     metroBeat?: { n: number; t: number } | null;
-    /** Kontrollierter Phase-Offset von außen (z.B. MixPlayer-Testpanel).
-     *  Wenn gesetzt, werden die internen Buttons ausgeblendet. */
     phaseOffset?: number;
     mixInStartSeconds?: number;
     mixInEndSeconds?: number;
@@ -29,7 +28,7 @@ type Props = {
 };
 
 export default function CdjWaveform({
-    trackId, waveform, duration, currentTime, onSeek,
+    trackId, waveform, waveformPeaks, duration, currentTime, onSeek,
     bpm, beatGridStartSeconds, beats, metroBeat,
     phaseOffset: externalPhaseOffset,
     mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds,
@@ -41,20 +40,38 @@ export default function CdjWaveform({
     const [zoomLevel, setZoomLevel] = useState(1);
     const [canvasW, setCanvasW] = useState(0);
     const [internalPhaseOffset, setInternalPhaseOffset] = useState(0);
-    // Wenn externer Offset gesetzt: diesen verwenden, sonst internen
     const phaseOffset = externalPhaseOffset !== undefined ? externalPhaseOffset : internalPhaseOffset;
 
     // Drag-Scrub: Anchor-Position beim MouseDown merken
     const dragRef = useRef<{ startX: number; startTime: number; windowSec: number } | null>(null);
-    // Optimistisches Seek-Time während Drag — sofort sichtbar, ohne auf Engine zu warten
+    // Optimistisches Seek-Time während Drag
     const [dragTime, setDragTime] = useState<number | null>(null);
+    // Lokaler View-Center (aktuell nur per Drag gesetzt, Wheel deaktiviert)
+    const [viewCenterSec, setViewCenterSec] = useState<number | null>(null);
 
     // Zoom + Phase zurücksetzen wenn neuer Track geladen wird
     useEffect(() => {
         setZoomLevel(1);
         setDragTime(null);
+        setViewCenterSec(null);
         setInternalPhaseOffset(0);
     }, [trackId]);
+
+    // Debug: einmalig wenn waveformPeaks für einen Track verfügbar wird
+    useEffect(() => {
+        if (!waveformPeaks) return;
+        console.log("[WaveformStartDebug]", {
+            duration,
+            beatGridStartSeconds,
+            // firstBeatSeconds + gridOffset sind keine Props → können Waveform nicht verschieben
+            rms0:      waveformPeaks.rms?.[0],
+            rms10:     waveformPeaks.rms?.[10],
+            rms100:    waveformPeaks.rms?.[100],
+            maxRms:    waveformPeaks.maxRms,
+            peakLength: waveformPeaks.length,
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [waveformPeaks]);
 
     // Canvas-Breite per ResizeObserver tracken
     useEffect(() => {
@@ -67,9 +84,14 @@ export default function CdjWaveform({
     }, []);
 
     const windowSec = BASE_WINDOW_SEC / zoomLevel;
-    // Während Drag: sofortige visuelle Reaktion ohne auf Engine-Update zu warten
-    const centerTime = dragTime ?? currentTime;
+    // Priorität: aktiver Drag > manueller View-Scroll > Playback-Position
+    const centerTime = dragTime ?? viewCenterSec ?? currentTime;
+    // CDJ-Stil: visibleStart darf negativ sein — Waveform beginnt in der Mitte beim Songstart.
+    // Zeiten < 0 werden beim Zeichnen übersprungen (leerer Bereich links vom Startpunkt).
     const visibleStart = centerTime - windowSec / 2;
+
+    // Wheel-Scroll deaktiviert — war instabil beim Scrollen über den Playhead.
+    // Navigation später über MiniWaveform-Klick.
 
     // Canvas neu zeichnen bei jeder Änderung
     useEffect(() => {
@@ -84,137 +106,158 @@ export default function CdjWaveform({
         const W = canvasW;
         const H = HEIGHT;
 
-        // Hintergrund
+        ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = "#04090f";
         ctx.fillRect(0, 0, W, H);
 
-        // Beat Inspector: 3 Zeilen — BEATS / GRID / METRO
-        const rowH = H / 3;
-        const LABEL_W = 48;
-        const toX = (t: number) => ((t - visibleStart) / windowSec) * W;
-
-        // Zeilen-Hintergründe
-        ctx.fillStyle = "#060e18"; ctx.fillRect(0, 0,          W, rowH);
-        ctx.fillStyle = "#04090f"; ctx.fillRect(0, rowH,       W, rowH);
-        ctx.fillStyle = "#060e12"; ctx.fillRect(0, rowH * 2,   W, rowH);
-
-        // Zeilen-Trenner
-        ctx.strokeStyle = "rgba(255,255,255,0.12)";
-        ctx.lineWidth = 1;
-        for (let i = 1; i < 3; i++) {
-            const ly = Math.round(i * rowH) + 0.5;
-            ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(W, ly); ctx.stroke();
+        // ── Alle Eingangswerte absichern ──────────────────────────────────────
+        // Ungültige Werte (NaN, Infinity, 0) führen zu unsichtbaren oder
+        // falsch platzierten Canvas-Zeichenoperationen.
+        if (
+            !Number.isFinite(duration)    || duration <= 0 ||
+            !Number.isFinite(windowSec)   || windowSec <= 0 ||
+            !Number.isFinite(centerTime)  ||
+            !Number.isFinite(visibleStart)
+        ) {
+            const playheadX = Number.isFinite(centerTime) && Number.isFinite(visibleStart) && windowSec > 0
+                ? ((centerTime - visibleStart) / windowSec) * W
+                : null;
+            console.log("[WaveformInvalid]", {
+                visibleStart,
+                visibleEnd:      visibleStart + windowSec,
+                visibleDuration: windowSec,
+                currentTime,
+                centerTime,
+                playheadX,
+            });
+            return;
         }
 
-        /* Analyse-Overlays — deaktiviert
-        const drawZone = (start: number | undefined, end: number | undefined, color: string) => {
-            if (start === undefined || end === undefined) return;
-            const x0 = Math.max(0, toX(start));
-            const x1 = Math.min(W, toX(end));
-            if (x1 <= x0) return;
-            ctx.fillStyle = color;
-            ctx.fillRect(x0, 0, x1 - x0, H);
-        };
-        // Vocal-Regionen (gelb)
-        if (alignedVocalRegions) {
-            for (const region of alignedVocalRegions) {
-                drawZone(region.startSeconds, region.endSeconds, "rgba(255,210,0,0.22)");
+        const LABEL_W = 40;
+        const timeToX = (t: number) => ((t - visibleStart) / windowSec) * W;
+        const xToTime = (px: number) => visibleStart + (px / W) * windowSec;
+        const halfH = (H - 8) / 2;
+        const midY  = H / 2;
+        const CLAMP = 0.9;
+        const vEnd  = visibleStart + windowSec;
+
+        // ── 1. Waveform als Hintergrund (volle Höhe) ─────────────────────────
+        if (waveformPeaks && waveformPeaks.length > 0 && duration > 0) {
+            const peakLength = waveformPeaks.length;
+            const normFactor = 1 / (waveformPeaks.maxRms || 1);
+            ctx.fillStyle = "rgba(56,189,248,0.55)";
+            for (let px = LABEL_W; px < W; px++) {
+                const tStart = xToTime(px);
+                const tEnd   = xToTime(px + 1);
+                if (tEnd < 0 || tStart >= duration) continue;
+                const i0 = Math.max(0,      Math.min(peakLength - 1, Math.floor((tStart / duration) * peakLength)));
+                const i1 = Math.max(i0 + 1, Math.min(peakLength,     Math.ceil( (tEnd   / duration) * peakLength)));
+                let rmsVal = 0, hasData = false;
+                for (let i = i0; i < i1; i++) {
+                    const r = waveformPeaks.rms[i];
+                    if (r === undefined) continue;
+                    if (r > rmsVal) rmsVal = r;
+                    hasData = true;
+                }
+                if (!hasData) continue;
+                const normalized = Math.min(1, rmsVal * normFactor);
+                const displayH = Math.sqrt(normalized) * halfH;
+                if (displayH < 0.5) continue;
+                const y0 = Math.round(midY - displayH);
+                const y1 = Math.round(midY + displayH);
+                ctx.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+            }
+        } else if (waveform.length > 0 && duration > 0) {
+            const waveLength = waveform.length;
+            ctx.fillStyle = "rgba(56,189,248,0.30)";
+            for (let px = LABEL_W; px < W; px++) {
+                const tStart = xToTime(px);
+                const tEnd   = xToTime(px + 1);
+                if (tEnd < 0 || tStart >= duration) continue;
+                const i0 = Math.max(0,            Math.min(waveLength - 1, Math.floor((tStart / duration) * waveLength)));
+                const i1 = Math.max(i0 + 1,       Math.min(waveLength,     Math.ceil( (tEnd   / duration) * waveLength)));
+                let peak = 0, hasData = false;
+                for (let i = i0; i < i1; i++) {
+                    const a = Math.abs(waveform[i]);
+                    if (isNaN(a)) continue;
+                    if (a > peak) peak = a;
+                    hasData = true;
+                }
+                if (!hasData) continue;
+                peak = Math.min(peak, CLAMP);
+                ctx.fillRect(px, Math.round(midY - peak * halfH), 1, Math.max(1, Math.round(peak * halfH * 2)));
             }
         }
-        // Mix-In / Mix-Out (blau / rot)
-        if (vocalMixZones) {
-            for (const zone of vocalMixZones) {
-                drawZone(zone.startSeconds, zone.endSeconds,
-                    zone.type === "mix-in" ? "rgba(0,120,255,0.28)" : "rgba(255,60,60,0.28)");
-            }
+
+        // ── 2. Metronom-Flash ─────────────────────────────────────────────────
+        if (metroBeat && centerTime - metroBeat.t < 0.15) {
+            const fade = 1 - (centerTime - metroBeat.t) / 0.15;
+            const isDown = metroBeat.n % 4 === 0;
+            ctx.fillStyle = isDown
+                ? `rgba(74,222,128,${(0.13 * fade).toFixed(2)})`
+                : `rgba(255,255,255,${(0.05 * fade).toFixed(2)})`;
+            ctx.fillRect(LABEL_W, 0, W - LABEL_W, H);
         }
-        */
 
-        // Label-Blöcke links
-        ctx.font = "bold 9px monospace";
-        ctx.textBaseline = "middle";
-        ctx.textAlign = "left";
-        ctx.fillStyle = "rgba(56,189,248,0.18)";  ctx.fillRect(0, 0,        LABEL_W, rowH);
-        ctx.fillStyle = "#38bdf8";                 ctx.fillText("BEATS", 3, rowH * 0.5);
-        ctx.fillStyle = "rgba(255,255,255,0.08)";  ctx.fillRect(0, rowH,     LABEL_W, rowH);
-        ctx.fillStyle = "rgba(255,255,255,0.65)";  ctx.fillText("GRID",  3, rowH * 1.5);
-        ctx.fillStyle = "rgba(74,222,128,0.15)";   ctx.fillRect(0, rowH * 2, LABEL_W, rowH);
-        ctx.fillStyle = "#4ade80";                  ctx.fillText("METRO", 3, rowH * 2.5);
-
-        // Zeile 0 — BEATS: erkannte Rohbeats (Referenz, abgeschwächt)
+        // ── 3. Rohbeats ───────────────────────────────────────────────────────
         if (beats && beats.length > 0) {
-            ctx.strokeStyle = "rgba(150,180,200,0.3)";
+            ctx.strokeStyle = "rgba(150,200,230,0.35)";
             ctx.lineWidth = 0.5;
-            const vEnd0 = visibleStart + windowSec;
             for (const t of beats) {
-                if (t < visibleStart - 0.01 || t > vEnd0 + 0.01) continue;
-                const x = Math.round(toX(t)) + 0.5;
-                ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, rowH - 4); ctx.stroke();
+                if (t < visibleStart - 0.01 || t > vEnd + 0.01) continue;
+                const x = Math.round(timeToX(t)) + 0.5;
+                ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, H - 2); ctx.stroke();
             }
         }
 
-        // Zeilen 1 + 2 — GRID und METRO
+        // ── 4. Beat-Grid ──────────────────────────────────────────────────────
         if (bpm && bpm > 0 && beatGridStartSeconds !== undefined) {
             const beatInterval = 60 / bpm;
-            const vEnd = visibleStart + windowSec;
             const nMin = Math.floor((visibleStart - beatGridStartSeconds) / beatInterval) - 1;
             const nMax = Math.ceil((vEnd - beatGridStartSeconds) / beatInterval) + 1;
 
             for (let n = nMin; n <= nMax; n++) {
                 const t = beatGridStartSeconds + n * beatInterval;
                 if (t < visibleStart - 0.01 || t > vEnd + 0.01) continue;
-                const x = Math.round(toX(t)) + 0.5;
+                const x = Math.round(timeToX(t)) + 0.5;
                 const beatInBar = ((n + phaseOffset) % 4 + 4) % 4;
                 const isDown = beatInBar === 0;
 
-                // GRID-Zeile: Linie
-                ctx.strokeStyle = isDown ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.40)";
-                ctx.lineWidth = isDown ? 2.5 : 1;
-                ctx.beginPath(); ctx.moveTo(x, rowH + 4); ctx.lineTo(x, rowH * 2 - 4); ctx.stroke();
-
-                // Beat-Zahl 1/2/3/4 — Beat 1 gold+groß, 2/3/4 weiß
                 if (isDown) {
-                    ctx.fillStyle = "rgba(251,191,36,0.30)";
-                    ctx.fillRect(x - 7, rowH + 1, 14, 13);
+                    ctx.fillStyle = "rgba(251,191,36,0.10)";
+                    ctx.fillRect(x - 1, 0, 3, H);
+                    ctx.strokeStyle = "rgba(251,191,36,0.90)";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
                     ctx.font = "bold 11px monospace";
                     ctx.textAlign = "center";
                     ctx.textBaseline = "top";
                     ctx.fillStyle = "#fbbf24";
-                    ctx.fillText("1", x, rowH + 2);
+                    ctx.fillText("1", x, 3);
                 } else {
+                    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, H - 4); ctx.stroke();
                     ctx.font = "bold 9px monospace";
                     ctx.textAlign = "center";
                     ctx.textBaseline = "top";
-                    ctx.fillStyle = "rgba(255,255,255,0.60)";
-                    ctx.fillText(String(beatInBar + 1), x, rowH + 2);
-                }
-
-                // METRO-Zeile: Beat 1 grün+groß, 2/3/4 weiß+klein
-                if (isDown) {
-                    ctx.strokeStyle = "#4ade80";
-                    ctx.lineWidth = 2.5;
-                    ctx.beginPath(); ctx.moveTo(x, rowH * 2 + 3); ctx.lineTo(x, H - 3); ctx.stroke();
-                } else {
-                    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-                    ctx.lineWidth = 1;
-                    const mid = rowH * 2.5;
-                    ctx.beginPath(); ctx.moveTo(x, mid - 5); ctx.lineTo(x, mid + 5); ctx.stroke();
+                    ctx.fillStyle = "rgba(255,255,255,0.55)";
+                    ctx.fillText(String(beatInBar + 1), x, 4);
                 }
             }
         }
 
-        // Metronom-Flash in METRO-Zeile
-        if (metroBeat && centerTime - metroBeat.t < 0.15) {
-            const fade = 1 - (centerTime - metroBeat.t) / 0.15;
-            const isDown = metroBeat.n % 4 === 0;
-            const cx = Math.round(W / 2);
-            ctx.fillStyle = isDown
-                ? `rgba(74,222,128,${(0.9 * fade).toFixed(2)})`
-                : `rgba(255,255,255,${(0.45 * fade).toFixed(2)})`;
-            ctx.fillRect(cx - 5, rowH * 2, 10, rowH);
-        }
+        // ── 5. Labels links ───────────────────────────────────────────────────
+        ctx.fillStyle = "rgba(4,9,15,0.65)";
+        ctx.fillRect(0, 0, LABEL_W - 1, H);
+        ctx.font = "bold 8px monospace";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#38bdf8";                  ctx.fillText("BEATS", 3, H * 0.22);
+        ctx.fillStyle = "rgba(255,255,255,0.55)";   ctx.fillText("GRID",  3, H * 0.50);
+        ctx.fillStyle = "#4ade80";                   ctx.fillText("METRO", 3, H * 0.78);
 
-        // Timing-Debug: Werte am Playhead
+        // ── 6. Timing-Debug ───────────────────────────────────────────────────
         if (bpm && bpm > 0 && beatGridStartSeconds !== undefined) {
             const iv = 60 / bpm;
             const steps = Math.ceil((centerTime - beatGridStartSeconds) / iv + 1e-6);
@@ -243,7 +286,8 @@ export default function CdjWaveform({
             ctx.fillText(line2, 4, H - 11);
         }
 
-        // Fixe Mittellinie (Playhead-Cursor)
+        // ── 7. Playhead ───────────────────────────────────────────────────────
+        // CDJ-Stil: Playhead steht immer fest in der Mitte, Waveform scrollt darunter.
         const cx = Math.round(W / 2) + 0.5;
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
@@ -252,7 +296,7 @@ export default function CdjWaveform({
         ctx.lineTo(cx, H);
         ctx.stroke();
 
-    }, [canvasW, centerTime, waveform, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat, phaseOffset, mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds, activityRegions, preActivityBeatCount, alignedVocalRegions, vocalMixZones]);
+    }, [canvasW, centerTime, waveform, waveformPeaks, duration, visibleStart, windowSec, bpm, beatGridStartSeconds, beats, metroBeat, phaseOffset, mixInStartSeconds, mixInEndSeconds, mixOutStartSeconds, mixOutEndSeconds, activityRegions, preActivityBeatCount, alignedVocalRegions, vocalMixZones]);
 
     // ── Maus-Interaktion ─────────────────────────────────────────────────────
 
@@ -276,7 +320,6 @@ export default function CdjWaveform({
         const { startX, startTime, windowSec: ws } = dragRef.current;
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
-        // Drag rechts → Zeit zurück, drag links → Zeit vor
         const deltaTime = -((e.clientX - startX) / rect.width) * ws;
         const newTime = Math.max(0, Math.min(duration, startTime + deltaTime));
         setDragTime(newTime);
@@ -287,6 +330,7 @@ export default function CdjWaveform({
         const drag = dragRef.current;
         dragRef.current = null;
         setDragTime(null);
+        setViewCenterSec(null);
         if (!drag) return;
         // Klick (keine echte Drag-Bewegung) → direkt zu Klick-Position springen
         if (Math.abs(e.clientX - drag.startX) < 4) {
@@ -295,8 +339,14 @@ export default function CdjWaveform({
     }
 
     function handleMouseLeave() {
-        dragRef.current = null;
-        setDragTime(null);
+        // viewCenterSec nur bei aktivem Drag zurücksetzen — nicht beim Wheel-Scroll.
+        // Ohne diese Unterscheidung springt die View zurück sobald der Cursor
+        // beim Scrollen den Canvas-Rand streift.
+        if (dragRef.current) {
+            dragRef.current = null;
+            setDragTime(null);
+            setViewCenterSec(null);
+        }
     }
 
     return (
@@ -323,7 +373,7 @@ export default function CdjWaveform({
                 />
             </div>
 
-            {/* Downbeat-Phase-Buttons — nur wenn nicht von außen kontrolliert (Deck B) */}
+            {/* Downbeat-Phase-Buttons */}
             {externalPhaseOffset === undefined && bpm && bpm > 0 && beatGridStartSeconds !== undefined && (
                 <div style={{
                     position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)",
@@ -371,7 +421,7 @@ export default function CdjWaveform({
                 ))}
             </div>
 
-            {waveform.length === 0 && (
+            {waveform.length === 0 && !waveformPeaks && (
                 <div style={{
                     position: "absolute", inset: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",

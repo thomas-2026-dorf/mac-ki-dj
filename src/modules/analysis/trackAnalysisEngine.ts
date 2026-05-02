@@ -52,6 +52,7 @@ export async function prepareTrackAnalysis(inputMp3: string, options?: { forceFr
                 bpmCandidates:    [],
                 onsetCount:       0,
                 waveform:         [],
+                waveformPeaks:    e.waveform,
                 beats:            e.beats,
                 cuePoints,
                 beatGridStartSeconds: e.firstBeatSeconds,
