@@ -1,4 +1,5 @@
 import type { TransitionPoint } from "../../types/track";
+import { chooseTransitionPreset } from "./chooseTransitionPreset";
 
 export type MixPlanInput = {
     master: {
@@ -23,6 +24,8 @@ export type MixPlan = {
     slaveVocalStartBeat?: number;
     secondsPerBeatMaster: number;
     lengthBeats: number;
+    presetId: string;
+    presetName: string;
 };
 
 function getTimeFromBeat(beat: number, firstBeatSeconds: number, secondsPerBeat: number): number {
@@ -30,9 +33,16 @@ function getTimeFromBeat(beat: number, firstBeatSeconds: number, secondsPerBeat:
 }
 
 export function createMixPlan(input: MixPlanInput): MixPlan {
-    const { master, slave, beatsBeforeVocalEnd } = input;
+    const { master, slave } = input;
 
     const secondsPerBeatMaster = 60 / master.bpm;
+
+    const preset = chooseTransitionPreset({
+        masterBpm: master.bpm,
+        slaveBpm: slave.bpm,
+        masterHasVocal: typeof master.vocalEndSeconds === "number",
+        slaveHasVocal: typeof slave.vocalStartSeconds === "number",
+    });
 
     const loopOutPoint = master.transitionPoints
         ?.filter((tp) => tp.role === "loop-out")
@@ -43,10 +53,8 @@ export function createMixPlan(input: MixPlanInput): MixPlan {
         lengthBeats = loopOutPoint.lengthBeats;
     } else if (loopOutPoint?.bars != null) {
         lengthBeats = loopOutPoint.bars;
-    } else if (beatsBeforeVocalEnd != null) {
-        lengthBeats = beatsBeforeVocalEnd;
     } else {
-        lengthBeats = 16;
+        lengthBeats = preset.lengthBeats;
     }
 
     const secondsPerBeatSlave = 60 / slave.bpm;
@@ -67,11 +75,16 @@ export function createMixPlan(input: MixPlanInput): MixPlan {
 
     const slaveStartTimeSeconds = getTimeFromBeat(slaveStartBeat, slave.firstBeatSeconds, secondsPerBeatSlave);
 
+    console.log("Preset gewählt:", preset.name);
+    console.log("Preset Beats:", preset.lengthBeats);
     console.log("Loop-Out gefunden:", !!loopOutPoint);
-    console.log("Loop-Out Beats:", lengthBeats);
     if (loopOutPoint) {
         console.log("Loop-Out Time:", loopOutPoint.timeSeconds);
+        console.log("→ verwendet lengthBeats vom Punkt");
+    } else {
+        console.log("→ verwendet Preset");
     }
+    console.log("Loop-Out Beats:", lengthBeats);
     console.log("Mix Start Beat:", mixStartBeat);
     console.log("Mix Start Time:", mixStartTimeSeconds);
     console.log("Slave Vocal Start vorhanden:", typeof slave.vocalStartSeconds === "number");
@@ -87,5 +100,7 @@ export function createMixPlan(input: MixPlanInput): MixPlan {
         slaveVocalStartBeat,
         secondsPerBeatMaster,
         lengthBeats,
+        presetId: preset.id,
+        presetName: preset.name,
     };
 }
