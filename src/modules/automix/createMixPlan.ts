@@ -10,6 +10,7 @@ export type MixPlanInput = {
     slave: {
         bpm: number;
         firstBeatSeconds: number;
+        vocalStartSeconds?: number;
     };
     beatsBeforeVocalEnd?: number;
 };
@@ -17,7 +18,9 @@ export type MixPlanInput = {
 export type MixPlan = {
     mixStartBeat: number;
     mixStartTimeSeconds: number;
+    slaveStartBeat: number;
     slaveStartTimeSeconds: number;
+    slaveVocalStartBeat?: number;
     secondsPerBeatMaster: number;
     lengthBeats: number;
 };
@@ -46,10 +49,23 @@ export function createMixPlan(input: MixPlanInput): MixPlan {
         lengthBeats = 16;
     }
 
+    const secondsPerBeatSlave = 60 / slave.bpm;
+
     const vocalEndBeat = (master.vocalEndSeconds - master.firstBeatSeconds) / secondsPerBeatMaster;
     const mixStartBeat = vocalEndBeat - lengthBeats;
     const mixStartTimeSeconds = getTimeFromBeat(mixStartBeat, master.firstBeatSeconds, secondsPerBeatMaster);
-    const slaveStartTimeSeconds = slave.firstBeatSeconds;
+
+    let slaveVocalStartBeat: number | undefined;
+    let slaveStartBeat: number;
+
+    if (typeof slave.vocalStartSeconds === "number") {
+        slaveVocalStartBeat = (slave.vocalStartSeconds - slave.firstBeatSeconds) / secondsPerBeatSlave;
+        slaveStartBeat = Math.max(1, slaveVocalStartBeat - lengthBeats);
+    } else {
+        slaveStartBeat = 1;
+    }
+
+    const slaveStartTimeSeconds = getTimeFromBeat(slaveStartBeat, slave.firstBeatSeconds, secondsPerBeatSlave);
 
     console.log("Loop-Out gefunden:", !!loopOutPoint);
     console.log("Loop-Out Beats:", lengthBeats);
@@ -58,11 +74,17 @@ export function createMixPlan(input: MixPlanInput): MixPlan {
     }
     console.log("Mix Start Beat:", mixStartBeat);
     console.log("Mix Start Time:", mixStartTimeSeconds);
+    console.log("Slave Vocal Start vorhanden:", typeof slave.vocalStartSeconds === "number");
+    console.log("Slave Vocal Start Beat:", slaveVocalStartBeat);
+    console.log("Slave Start Beat:", slaveStartBeat);
+    console.log("Slave Start Time (s):", slaveStartTimeSeconds.toFixed(2));
 
     return {
         mixStartBeat,
         mixStartTimeSeconds,
+        slaveStartBeat,
         slaveStartTimeSeconds,
+        slaveVocalStartBeat,
         secondsPerBeatMaster,
         lengthBeats,
     };
