@@ -233,13 +233,13 @@ const CdjWaveform = forwardRef<CdjWaveformHandle, Props>(function CdjWaveform({
                 }
             }
 
-            // ── Vocal Start Marker (Cyan) ─────────────────────────────────
+            // ── Vocal Start Marker (Gelb) ─────────────────────────────────
             if (vs !== null) {
                 const x = Math.round(cx + (vs - ct) * pxPerSec);
-                ctx.strokeStyle = "rgba(0,220,255,0.95)";
+                ctx.strokeStyle = "rgba(255,220,0,0.95)";
                 ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-                ctx.fillStyle = "rgba(0,220,255,1)";
+                ctx.fillStyle = "rgba(255,220,0,1)";
                 ctx.font = "bold 11px monospace";
                 ctx.fillText("VS", x + 3, h - 16);
             }

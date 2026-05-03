@@ -481,6 +481,14 @@ export default function MixPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [current?.id]);
 
+    // ── Mixer State ───────────────────────────────────────────────────────────
+    type DeckMixer = { volume: number; pitch: number; low: number; mid: number; high: number };
+    const [deckAMixer, setDeckAMixer] = useState<DeckMixer>({ volume: 1, pitch: 0, low: 0, mid: 0, high: 0 });
+    const [deckBMixer, setDeckBMixer] = useState<DeckMixer>({ volume: 1, pitch: 0, low: 0, mid: 0, high: 0 });
+    const [masterVolume, setMasterVolume] = useState(1);
+    const [crossfader, setCrossfader] = useState(0.5);
+    const [crossfaderLinked, setCrossfaderLinked] = useState(true);
+
     const [metroOn, setMetroOn] = useState(false);
     const [downbeatSuggestion, setDownbeatSuggestion] = useState<{ phase: 0|1|2|3; confidence: number } | null>(null);
     const [testOffset, setTestOffset] = useState(0);
@@ -1101,6 +1109,153 @@ export default function MixPlayer({
                     <div className="mix-waveform-empty">Kein Track bereit</div>
                 )}
             </div>
+
+            {/* ── DJ Mixer ──────────────────────────────────────── */}
+            {(() => {
+                const accent = { a: "#4f8ef7", b: "#f97316", master: "#22d3ee", cf: "#a78bfa" };
+
+                function vFader(
+                    value: number, min: number, max: number, step: number,
+                    height: number, color: string, onChange: (v: number) => void,
+                    defaultVal: number
+                ) {
+                    const displayVal = value === 0 ? "0" : Math.abs(value) < 1 ? value.toFixed(2) : value.toFixed(1);
+                    return (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                            <div style={{ height: `${height}px`, width: "22px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <input type="range" min={min} max={max} step={step} value={value}
+                                    onChange={e => onChange(Number(e.target.value))}
+                                    onDoubleClick={() => onChange(defaultVal)}
+                                    style={{ width: `${height}px`, height: "18px", transform: "rotate(-90deg)", cursor: "pointer", accentColor: color, flexShrink: 0 }} />
+                            </div>
+                            <span style={{ fontSize: "8px", color: "#334155", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{displayVal}</span>
+                        </div>
+                    );
+                }
+
+                function eqCol(label: string, value: number, color: string, defaultVal: number, onChange: (v: number) => void) {
+                    return (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                            <span style={{ fontSize: "8px", color: "#334155", letterSpacing: "0.04em" }}>{label}</span>
+                            {vFader(value, -12, 12, 0.5, 56, color, onChange, defaultVal)}
+                        </div>
+                    );
+                }
+
+                // Band/Volume ändern + Partner-Deck spiegeln wenn EQ LINK aktiv
+                function linkedChange(
+                    band: "low" | "mid" | "high" | "volume",
+                    v: number,
+                    setOwn: typeof setDeckAMixer,
+                    setOther: typeof setDeckBMixer
+                ) {
+                    setOwn(s => ({ ...s, [band]: v }));
+                    if (crossfaderLinked) {
+                        const mirror = band === "volume"
+                            ? Math.round((1 - v) * 100) / 100
+                            : Math.round(-v * 2) / 2;
+                        setOther(s => ({ ...s, [band]: mirror }));
+                    }
+                }
+
+                function deckStrip(
+                    label: string,
+                    color: string,
+                    mixer: typeof deckAMixer,
+                    setMixer: typeof setDeckAMixer,
+                    setOther: typeof setDeckBMixer,
+                    align: "left" | "right"
+                ) {
+                    const inner = (
+                        <>
+                            <span style={{ fontSize: "11px", color, fontWeight: 800, letterSpacing: "0.15em" }}>{label}</span>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", marginTop: "4px" }}>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                                    <span style={{ fontSize: "8px", color: "#334155" }}>VOL</span>
+                                    {vFader(mixer.volume, 0, 1, 0.01, 80, color, v => linkedChange("volume", v, setMixer, setOther), 1)}
+                                </div>
+                                <div style={{ width: "1px", background: "rgba(255,255,255,0.06)", alignSelf: "stretch", margin: "0 2px" }} />
+                                {eqCol("HI",  mixer.high, color, 0, v => linkedChange("high", v, setMixer, setOther))}
+                                {eqCol("MID", mixer.mid,  color, 0, v => linkedChange("mid",  v, setMixer, setOther))}
+                                {eqCol("LOW", mixer.low,  color, 0, v => linkedChange("low",  v, setMixer, setOther))}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "6px" }}>
+                                <span style={{ fontSize: "8px", color: "#334155" }}>PITCH</span>
+                                <input type="range" min={-8} max={8} step={0.1} value={mixer.pitch}
+                                    onChange={e => setMixer(s => ({ ...s, pitch: Number(e.target.value) }))}
+                                    onDoubleClick={() => setMixer(s => ({ ...s, pitch: 0 }))}
+                                    style={{ width: "80px", cursor: "pointer", accentColor: color }} />
+                                <span style={{ fontSize: "8px", color: "#334155", fontVariantNumeric: "tabular-nums", width: "28px" }}>
+                                    {mixer.pitch === 0 ? "±0" : (mixer.pitch > 0 ? "+" : "") + mixer.pitch.toFixed(1)}
+                                </span>
+                            </div>
+                        </>
+                    );
+                    return (
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "flex-end", padding: align === "left" ? "10px 12px 10px 16px" : "10px 16px 10px 12px", borderRight: align === "left" ? "1px solid rgba(255,255,255,0.06)" : undefined, borderLeft: align === "right" ? "1px solid rgba(255,255,255,0.06)" : undefined }}>
+                            {inner}
+                        </div>
+                    );
+                }
+
+                return (
+                    <div style={{ display: "flex", background: "rgba(4,7,14,0.98)", borderTop: "2px solid rgba(255,255,255,0.06)" }}>
+                        {deckStrip("A", accent.a, deckAMixer, setDeckAMixer, setDeckBMixer, "left")}
+
+                        {/* Center: Master + Crossfader + EQ Link */}
+                        <div style={{ flex: "0 0 180px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 8px" }}>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", width: "100%" }}>
+                                <span style={{ fontSize: "9px", color: accent.master, fontWeight: 700, letterSpacing: "0.1em" }}>MASTER</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                    <input type="range" min={0} max={1} step={0.01} value={masterVolume}
+                                        onChange={e => setMasterVolume(Number(e.target.value))}
+                                        onDoubleClick={() => setMasterVolume(1)}
+                                        style={{ width: "110px", cursor: "pointer", accentColor: accent.master }} />
+                                    <span style={{ fontSize: "8px", color: "#334155", fontVariantNumeric: "tabular-nums", width: "24px" }}>
+                                        {masterVolume.toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", width: "100%" }}>
+                                <span style={{ fontSize: "9px", color: accent.cf, fontWeight: 700, letterSpacing: "0.1em" }}>CROSSFADER</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                    <span style={{ fontSize: "9px", color: accent.a, fontWeight: 800 }}>A</span>
+                                    <input type="range" min={0} max={1} step={0.005} value={crossfader}
+                                        onChange={e => setCrossfader(Number(e.target.value))}
+                                        onDoubleClick={() => setCrossfader(0.5)}
+                                        style={{ width: "110px", cursor: "pointer", accentColor: accent.cf }} />
+                                    <span style={{ fontSize: "9px", color: accent.b, fontWeight: 800 }}>B</span>
+                                </div>
+                                <span style={{ fontSize: "8px", color: "#334155" }}>
+                                    {crossfader < 0.01 ? "◄ voll A" : crossfader > 0.99 ? "voll B ►" : crossfader === 0.5 ? "CENTER" : crossfader < 0.5 ? `◄ A ${Math.round((1 - crossfader * 2) * 100)}%` : `B ${Math.round((crossfader * 2 - 1) * 100)}% ►`}
+                                </span>
+                            </div>
+
+                            <button
+                                onClick={() => setCrossfaderLinked(v => !v)}
+                                style={{
+                                    background: crossfaderLinked ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.03)",
+                                    border: `1px solid ${crossfaderLinked ? "#22c55e" : "rgba(255,255,255,0.1)"}`,
+                                    borderRadius: "4px",
+                                    color: crossfaderLinked ? "#22c55e" : "#334155",
+                                    fontSize: "9px",
+                                    fontWeight: 700,
+                                    letterSpacing: "0.12em",
+                                    padding: "4px 14px",
+                                    cursor: "pointer",
+                                    boxShadow: crossfaderLinked ? "0 0 8px rgba(34,197,94,0.2)" : "none",
+                                    transition: "all 0.15s",
+                                }}
+                            >
+                                {crossfaderLinked ? "● EQ LINK" : "○ EQ LINK"}
+                            </button>
+                        </div>
+
+                        {deckStrip("B", accent.b, deckBMixer, setDeckBMixer, setDeckAMixer, "right")}
+                    </div>
+                );
+            })()}
 
             {/* Deck-B-Phase-Panel disabled (Superpowered migration) */}
             {false && next && (next!.analysis?.beatGridStartSeconds !== undefined || nextGridStartOverride !== null) && (
