@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
+import { detectVocalRegion } from "../modules/analysis/vocalAnalyzer";
 
 const HEIGHT = 120;
 const VISIBLE_SECONDS = 4;
+const DEFAULT_VOCAL_DURATION = 120; // 2 Minuten Auto-Schätzung
 
 type Props = {
     trackId: string;
@@ -29,21 +31,26 @@ type Props = {
     isPlaying?: boolean;
 };
 
-function getFirstBeatPath(filePath: string): string {
+function getCachePath(filePath: string, suffix: string): string {
     const parts = filePath.split("/");
     const fileName = parts.pop() ?? "track";
     const dir = parts.join("/");
     const baseName = fileName.replace(/\.[^/.]+$/, "");
-    return `${dir}/.tkdj/${baseName}.firstbeat.json`;
+    return `${dir}/.tkdj/${baseName}.${suffix}`;
 }
 
 // Beat-Farben: 1=rot, 2/3/4=weiß
 const BEAT_COLORS = [
-    { line: "rgba(255,50,50,0.95)",  text: "rgba(255,80,80,1)",    width: 2 }, // 1
-    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 }, // 2
-    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 }, // 3
-    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 }, // 4
+    { line: "rgba(255,50,50,0.95)",  text: "rgba(255,80,80,1)",    width: 2 },
+    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 },
+    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 },
+    { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 },
 ];
+
+const BTN: React.CSSProperties = {
+    fontSize: 11, padding: "2px 8px", borderRadius: 3,
+    cursor: "pointer", fontFamily: "monospace", border: "1px solid",
+};
 
 export default function CdjWaveform({
     filePath,
@@ -57,61 +64,84 @@ export default function CdjWaveform({
 }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    const peaksRef = useRef<number[]>([]);
-    const currentTimeRef = useRef(currentTime);
-    const durationRef = useRef(duration);
-    const bpmRef = useRef(bpm);
-    const beatGridRef = useRef(beatGridStartSeconds);
-    const phaseRef = useRef(phaseOffset ?? 0);
-    const isPlayingRef = useRef(isPlaying ?? false);
+    const peaksRef        = useRef<number[]>([]);
+    const currentTimeRef  = useRef(currentTime);
+    const durationRef     = useRef(duration);
+    const bpmRef          = useRef(bpm);
+    const beatGridRef     = useRef(beatGridStartSeconds);
+    const phaseRef        = useRef(phaseOffset ?? 0);
+    const isPlayingRef    = useRef(isPlaying ?? false);
 
-    // Smooth-Interpolation: prop kommt nur 20×/s vom MixEngine-Tick
-    // RAF läuft 60fps → Echtzeit seit letztem Prop-Update addieren
     const lastPropRef = useRef<{ time: number; at: number }>({ time: currentTime, at: performance.now() });
-
     if (lastPropRef.current.time !== currentTime) {
         lastPropRef.current = { time: currentTime, at: performance.now() };
     }
 
-    const [firstBeatOffset, setFirstBeatOffset] = useState<number | null>(null);
-    const firstBeatOffsetRef = useRef<number | null>(null);
-    const [saved, setSaved] = useState(false);
+    // ── Beat "1" ──────────────────────────────────────────────────────────
+    const [firstBeat, setFirstBeat]         = useState<number | null>(null);
+    const [firstBeatSaved, setFirstBeatSaved] = useState(false);
+    const firstBeatRef = useRef<number | null>(null);
 
-    currentTimeRef.current = currentTime;
-    durationRef.current = duration;
-    bpmRef.current = bpm;
-    beatGridRef.current = beatGridStartSeconds;
-    phaseRef.current = phaseOffset ?? 0;
-    isPlayingRef.current = isPlaying ?? false;
+    // ── Vocal Markers ─────────────────────────────────────────────────────
+    const [vocalStart, setVocalStart]     = useState<number | null>(null);
+    const [vocalEnd, setVocalEnd]         = useState<number | null>(null);
+    const [vocalSaved, setVocalSaved]     = useState(false);
+    const [vocalAnalyzing, setVocalAnalyzing] = useState(false);
+    const vocalStartRef = useRef<number | null>(null);
+    const vocalEndRef   = useRef<number | null>(null);
 
-    // Peaks + gespeicherten First-Beat laden wenn Track wechselt
+    currentTimeRef.current  = currentTime;
+    durationRef.current     = duration;
+    bpmRef.current          = bpm;
+    beatGridRef.current     = beatGridStartSeconds;
+    phaseRef.current        = phaseOffset ?? 0;
+    isPlayingRef.current    = isPlaying ?? false;
+
+    // ── Laden wenn Track wechselt ─────────────────────────────────────────
     useEffect(() => {
-        peaksRef.current = [];
-        firstBeatOffsetRef.current = null;
-        setFirstBeatOffset(null);
-        setSaved(false);
+        peaksRef.current    = [];
+        firstBeatRef.current = null;
+        vocalStartRef.current = null;
+        vocalEndRef.current   = null;
+        setFirstBeat(null);
+        setFirstBeatSaved(false);
+        setVocalStart(null);
+        setVocalEnd(null);
+        setVocalSaved(false);
         if (!filePath) return;
 
         invoke<number[]>("superpowered_generate_waveform", { path: filePath })
             .then(p => { peaksRef.current = p; })
             .catch(e => console.error("Waveform laden fehlgeschlagen:", e));
 
-        const fbPath = getFirstBeatPath(filePath);
-        invoke<boolean>("tkdj_file_exists", { path: fbPath })
-            .then(exists => {
-                if (!exists) return;
-                return invoke<string>("tkdj_read_text_file", { path: fbPath })
-                    .then(raw => {
-                        const data = JSON.parse(raw) as { firstBeatSeconds: number };
-                        firstBeatOffsetRef.current = data.firstBeatSeconds;
-                        setFirstBeatOffset(data.firstBeatSeconds);
-                        setSaved(true);
-                    });
-            })
-            .catch(e => console.warn("First beat laden fehlgeschlagen:", e));
+        // First-Beat laden
+        const fbPath = getCachePath(filePath, "firstbeat.json");
+        invoke<boolean>("tkdj_file_exists", { path: fbPath }).then(exists => {
+            if (!exists) return;
+            invoke<string>("tkdj_read_text_file", { path: fbPath }).then(raw => {
+                const d = JSON.parse(raw) as { firstBeatSeconds: number };
+                firstBeatRef.current = d.firstBeatSeconds;
+                setFirstBeat(d.firstBeatSeconds);
+                setFirstBeatSaved(true);
+            });
+        }).catch(() => {});
+
+        // Vocal-Marker laden
+        const vpPath = getCachePath(filePath, "vocal.json");
+        invoke<boolean>("tkdj_file_exists", { path: vpPath }).then(exists => {
+            if (!exists) return;
+            invoke<string>("tkdj_read_text_file", { path: vpPath }).then(raw => {
+                const d = JSON.parse(raw) as { vocalStartSeconds: number; vocalEndSeconds: number };
+                vocalStartRef.current = d.vocalStartSeconds;
+                vocalEndRef.current   = d.vocalEndSeconds;
+                setVocalStart(d.vocalStartSeconds);
+                setVocalEnd(d.vocalEndSeconds);
+                setVocalSaved(true);
+            });
+        }).catch(() => {});
     }, [filePath]);
 
-    // RAF-Loop: echter 60fps durch Zeitinterpolation
+    // ── RAF-Loop ──────────────────────────────────────────────────────────
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -121,174 +151,267 @@ export default function CdjWaveform({
 
         const setSize = () => {
             const w = canvas.parentElement?.clientWidth || 800;
-            canvas.width = Math.round(w * dpr);
+            canvas.width  = Math.round(w * dpr);
             canvas.height = Math.round(HEIGHT * dpr);
         };
         setSize();
-
         const ro = new ResizeObserver(setSize);
         if (canvas.parentElement) ro.observe(canvas.parentElement);
 
         const draw = () => {
             rafId = requestAnimationFrame(draw);
-
-            const peaks = peaksRef.current;
             const ctx = canvas.getContext("2d");
             if (!ctx) return;
 
             ctx.imageSmoothingEnabled = false;
-
-            const w = canvas.width / dpr;
-            const h = canvas.height / dpr;
+            const w  = canvas.width / dpr;
+            const h  = canvas.height / dpr;
             const mid = Math.round(h / 2);
-            const cx = Math.round(w / 2);
+            const cx  = Math.round(w / 2);
 
             ctx.save();
             ctx.scale(dpr, dpr);
             ctx.clearRect(0, 0, w, h);
 
-            // Interpolierte Zeit für flüssige 60fps-Animation
             const { time: propTime, at: propAt } = lastPropRef.current;
             const elapsed = isPlayingRef.current ? (performance.now() - propAt) / 1000 : 0;
-            const ct = Math.min(propTime + elapsed, Math.max(durationRef.current, 1));
+            const ct  = Math.min(propTime + elapsed, Math.max(durationRef.current, 1));
             const dur = Math.max(durationRef.current, 1);
+            const pxPerSec = w / VISIBLE_SECONDS;
 
-            // --- Waveform ---
+            // ── Vocal-Zone (Hintergrund-Highlight) ────────────────────────
+            const vs = vocalStartRef.current;
+            const ve = vocalEndRef.current;
+            if (vs !== null && ve !== null) {
+                const x0 = Math.round(cx + (vs - ct) * pxPerSec);
+                const x1 = Math.round(cx + (ve - ct) * pxPerSec);
+                const xL = Math.max(0, Math.min(x0, x1));
+                const xR = Math.min(w, Math.max(x0, x1));
+                if (xR > xL) {
+                    ctx.fillStyle = "rgba(0,180,220,0.08)";
+                    ctx.fillRect(xL, 0, xR - xL, h);
+                }
+            }
+
+            // ── Waveform ──────────────────────────────────────────────────
+            const peaks = peaksRef.current;
             if (peaks.length > 0) {
                 const pps = peaks.length / dur;
                 const centerPeak = ct * pps;
-                const halfPeaks = (VISIBLE_SECONDS / 2) * pps;
-
+                const halfPeaks  = (VISIBLE_SECONDS / 2) * pps;
                 ctx.fillStyle = "#00e87a";
                 for (let x = 0; x < Math.round(w); x++) {
                     const idx = Math.round(centerPeak - halfPeaks + (x / w) * VISIBLE_SECONDS * pps);
                     if (idx < 0 || idx >= peaks.length) continue;
-                    const amp = peaks[idx] || 0;
-                    const barH = Math.round(amp * mid * 0.95);
+                    // Waveform auf innere Zone begrenzen: 20px oben + 20px unten frei
+                const barH = Math.round((peaks[idx] || 0) * (mid - 20) * 0.95);
                     if (barH < 1) continue;
                     ctx.fillRect(x, mid - barH, 1, barH * 2);
                 }
             }
 
-            // --- Beat-Grid: alle 4 Beats gleichwertig ---
-            const bpm = bpmRef.current;
-            const gridStart = firstBeatOffsetRef.current ?? beatGridRef.current ?? null;
-            if (bpm && bpm > 0 && gridStart !== null) {
-                const beatSec = 60 / bpm;
-                const pxPerSec = w / VISIBLE_SECONDS;
-                const tStart = ct - VISIBLE_SECONDS / 2;
-                const tEnd = ct + VISIBLE_SECONDS / 2;
-                const phase = phaseRef.current;
-
-                const nFirst = Math.ceil((tStart - gridStart) / beatSec);
-                const nLast = Math.floor((tEnd - gridStart) / beatSec);
+            // ── Beat-Grid + Vocal-Counter ─────────────────────────────────
+            const bpm_ = bpmRef.current;
+            const gridStart = firstBeatRef.current ?? beatGridRef.current ?? null;
+            if (bpm_ && bpm_ > 0 && gridStart !== null) {
+                const beatSec  = 60 / bpm_;
+                const phase    = phaseRef.current;
+                const vocalSt  = vocalStartRef.current;
+                const nFirst   = Math.ceil((ct - VISIBLE_SECONDS / 2 - gridStart) / beatSec);
+                const nLast    = Math.floor((ct + VISIBLE_SECONDS / 2 - gridStart) / beatSec);
 
                 for (let n = nFirst; n <= nLast; n++) {
                     const beatTime = gridStart + n * beatSec;
                     const x = Math.round(cx + (beatTime - ct) * pxPerSec);
                     if (x < 0 || x > w) continue;
 
-                    const beatInBar = ((n - phase) % 4 + 4) % 4; // 0=1, 1=2, 2=3, 3=4
-                    const style = BEAT_COLORS[beatInBar];
-
+                    // Beat-Linie + 1/2/3/4 Label (original Position)
+                    const style = BEAT_COLORS[((n - phase) % 4 + 4) % 4];
                     ctx.strokeStyle = style.line;
-                    ctx.lineWidth = style.width;
-                    ctx.beginPath();
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, h);
-                    ctx.stroke();
-
+                    ctx.lineWidth   = style.width;
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
                     ctx.fillStyle = style.text;
-                    ctx.font = beatInBar === 0
-                        ? "bold 12px monospace"
-                        : "11px monospace";
-                    ctx.fillText(String(beatInBar + 1), x + 3, 14);
+                    ctx.font = style.width === 2 ? "bold 12px monospace" : "11px monospace";
+                    ctx.fillText(String(((n - phase) % 4 + 4) % 4 + 1), x + 3, 14);
+
+                    // Vocal-Counter unten (außerhalb Waveform-Zone)
+                    if (vocalSt !== null && beatTime >= vocalSt - beatSec * 0.5) {
+                        const vocalBeat = Math.round((beatTime - vocalSt) / beatSec) + 1;
+                        if (vocalBeat >= 1) {
+                            ctx.fillStyle = "rgba(255,210,50,1)";
+                            ctx.font = "bold 10px monospace";
+                            ctx.fillText(String(vocalBeat), x + 2, h - 6);
+                        }
+                    }
                 }
             }
 
-            // --- Playhead ---
+            // ── Vocal Start Marker (Cyan) ─────────────────────────────────
+            if (vs !== null) {
+                const x = Math.round(cx + (vs - ct) * pxPerSec);
+                ctx.strokeStyle = "rgba(0,220,255,0.95)";
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+                ctx.fillStyle = "rgba(0,220,255,1)";
+                ctx.font = "bold 11px monospace";
+                ctx.fillText("VS", x + 3, h - 16);
+            }
+
+            // ── Vocal End Marker (Orange) ─────────────────────────────────
+            if (ve !== null) {
+                const x = Math.round(cx + (ve - ct) * pxPerSec);
+                ctx.strokeStyle = "rgba(255,150,0,0.95)";
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+                ctx.fillStyle = "rgba(255,150,0,1)";
+                ctx.font = "bold 11px monospace";
+                ctx.fillText("VE", x + 3, h - 16);
+            }
+
+            // ── Playhead ──────────────────────────────────────────────────
             ctx.strokeStyle = "#ff3333";
             ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(cx, 0);
-            ctx.lineTo(cx, h);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
 
             ctx.restore();
         };
 
         rafId = requestAnimationFrame(draw);
-        return () => {
-            cancelAnimationFrame(rafId);
-            ro.disconnect();
-        };
+        return () => { cancelAnimationFrame(rafId); ro.disconnect(); };
     }, [filePath]);
 
+    // ── Early return wenn kein Track ──────────────────────────────────────
     if (!filePath) {
         return (
-            <div style={{
-                width: "100%",
-                height: `${HEIGHT}px`,
-                background: "#04090f",
-                border: "1px dashed #1e3a5a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#334155",
-                fontSize: "12px",
-            }}>
+            <div style={{ width: "100%", height: `${HEIGHT}px`, background: "#04090f",
+                border: "1px dashed #1e3a5a", display: "flex", alignItems: "center",
+                justifyContent: "center", color: "#334155", fontSize: "12px" }}>
                 Kein Track geladen
             </div>
         );
     }
 
+    // ── Drag-to-seek ──────────────────────────────────────────────────────
     function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
         const canvas = canvasRef.current;
         if (!canvas) return;
         e.preventDefault();
-
-        const startX = e.clientX;
+        const startX    = e.clientX;
         const startTime = currentTimeRef.current;
-        const canvasWidth = canvas.getBoundingClientRect().width;
-        const secPerPx = VISIBLE_SECONDS / canvasWidth;
-
+        const secPerPx  = VISIBLE_SECONDS / canvas.getBoundingClientRect().width;
         canvas.style.cursor = "grabbing";
-
         const onMove = (ev: MouseEvent) => {
-            const deltaX = ev.clientX - startX;
-            const newTime = Math.max(0, Math.min(startTime - deltaX * secPerPx, durationRef.current));
-            onSeek(newTime);
+            onSeek(Math.max(0, Math.min(startTime - (ev.clientX - startX) * secPerPx, durationRef.current)));
         };
-
         const onUp = () => {
             canvas.style.cursor = "grab";
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
         };
-
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
     }
 
-    function handleSaveFirstBeat() {
+    // ── Speichern-Helfer ──────────────────────────────────────────────────
+    function saveFirstBeat() {
         const t = currentTimeRef.current;
-        firstBeatOffsetRef.current = t;
-        setFirstBeatOffset(t);
-        setSaved(false);
-
-        if (!filePath) return;
-        const fbPath = getFirstBeatPath(filePath);
-        invoke("tkdj_write_text_file", {
-            path: fbPath,
-            content: JSON.stringify({ firstBeatSeconds: t }, null, 2),
-        })
-            .then(() => setSaved(true))
-            .catch(e => console.error("First beat speichern fehlgeschlagen:", e));
+        firstBeatRef.current = t;
+        setFirstBeat(t);
+        setFirstBeatSaved(false);
+        onSeek(t); // Playhead auf die "1" springen
+        const path = getCachePath(filePath!, "firstbeat.json");
+        invoke("tkdj_write_text_file", { path, content: JSON.stringify({ firstBeatSeconds: t }, null, 2) })
+            .then(() => setFirstBeatSaved(true))
+            .catch(console.error);
     }
 
-    const infoText = firstBeatOffset === null
-        ? "Waveform ziehen → 1 ausrichten → Speichern"
-        : `▼1 bei ${firstBeatOffset.toFixed(3)}s${saved ? " ✓" : " (nicht gespeichert)"}`;
+    function saveVocal(start: number, end: number) {
+        vocalStartRef.current = start;
+        vocalEndRef.current   = end;
+        setVocalStart(start);
+        setVocalEnd(end);
+        setVocalSaved(false);
+        const path = getCachePath(filePath!, "vocal.json");
+        invoke("tkdj_write_text_file", {
+            path,
+            content: JSON.stringify({ vocalStartSeconds: start, vocalEndSeconds: end }, null, 2),
+        }).then(() => setVocalSaved(true)).catch(console.error);
+    }
+
+    function handleSetVocalStart() {
+        const t = currentTimeRef.current;
+        // Sofort mit 2-Min-Schätzung setzen
+        const estimatedEnd = Math.min(t + DEFAULT_VOCAL_DURATION, durationRef.current);
+        saveVocal(t, estimatedEnd);
+
+        // Vocal-Erkennung im Hintergrund — korrigiert VE wenn fertig
+        setVocalAnalyzing(true);
+        detectVocalRegion(filePath!)
+            .then(region => {
+                if (region) {
+                    console.log("[CdjWaveform] Vocal-Region erkannt:", region);
+                    saveVocal(t, region.endSeconds);
+                } else {
+                    console.log("[CdjWaveform] Kein Vocal erkannt, behalte 2-Min-Schätzung");
+                }
+            })
+            .catch(e => console.warn("[CdjWaveform] Vocal-Analyse fehlgeschlagen:", e))
+            .finally(() => setVocalAnalyzing(false));
+    }
+
+    function handleSetVocalEnd() {
+        const t   = currentTimeRef.current;
+        const start = vocalStartRef.current ?? t;
+        saveVocal(start, t);
+    }
+
+    function handleJumpToVocalEnd() {
+        if (vocalEndRef.current !== null) onSeek(vocalEndRef.current);
+    }
+
+    // ── Marker-Navigation ─────────────────────────────────────────────────
+    // Refs für Navigation – damit Click-Handler immer aktuelle Werte haben
+    function getMarkersFromRefs() {
+        const m: { label: string; time: number }[] = [];
+        if (firstBeatRef.current  !== null) m.push({ label: "▼1", time: firstBeatRef.current });
+        if (vocalStartRef.current !== null) m.push({ label: "VS", time: vocalStartRef.current });
+        if (vocalEndRef.current   !== null) m.push({ label: "VE", time: vocalEndRef.current });
+        return m.sort((a, b) => a.time - b.time);
+    }
+
+    // State-Werte für Anzeige in der UI
+    function getMarkersFromState() {
+        const m: { label: string; time: number }[] = [];
+        if (firstBeat  !== null) m.push({ label: "▼1", time: firstBeat });
+        if (vocalStart !== null) m.push({ label: "VS", time: vocalStart });
+        if (vocalEnd   !== null) m.push({ label: "VE", time: vocalEnd });
+        return m.sort((a, b) => a.time - b.time);
+    }
+
+    function handlePrevMarker() {
+        const t = currentTimeRef.current;
+        const prev = [...getMarkersFromRefs()].reverse().find(m => m.time < t - 0.1);
+        if (prev) onSeek(prev.time);
+    }
+
+    function handleNextMarker() {
+        const t = currentTimeRef.current;
+        const next = getMarkersFromRefs().find(m => m.time > t + 0.1);
+        if (next) onSeek(next.time);
+    }
+
+    // ── UI ────────────────────────────────────────────────────────────────
+    const beat1Info = firstBeat === null
+        ? "Ziehen → 1 ausrichten"
+        : `▼1 ${firstBeat.toFixed(3)}s${firstBeatSaved ? " ✓" : ""}`;
+
+    const vocalInfo = vocalAnalyzing
+        ? "Analysiere Vocals..."
+        : vocalStart === null
+            ? "Waveform ziehen → VS setzen"
+            : vocalEnd === null
+                ? `VS ${vocalStart.toFixed(1)}s — VE fehlt`
+                : `VS ${vocalStart.toFixed(1)}s → VE ${vocalEnd.toFixed(1)}s (${(vocalEnd - vocalStart).toFixed(0)}s)${vocalSaved ? " ✓" : ""}`;
 
     return (
         <div style={{ position: "relative", width: "100%" }}>
@@ -297,24 +420,68 @@ export default function CdjWaveform({
                 onMouseDown={handleMouseDown}
                 style={{ display: "block", width: "100%", height: `${HEIGHT}px`, background: "#111", cursor: "grab" }}
             />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px" }}>
-                <button
-                    onClick={handleSaveFirstBeat}
-                    style={{
-                        background: "#1a3a1a",
-                        border: "1px solid #ffd84d",
-                        color: "#ffd84d",
-                        fontSize: 11,
-                        padding: "2px 8px",
-                        borderRadius: 3,
-                        cursor: "pointer",
-                        fontFamily: "monospace",
-                    }}
-                >
+
+            {/* Zeile 1: Beat "1" */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 6px" }}>
+                <button onClick={saveFirstBeat}
+                    style={{ ...BTN, background: "#1a2a1a", borderColor: "#ff5050", color: "#ff5050" }}>
                     ▼1 setzen
                 </button>
-                <span style={{ color: "#ffd84d", fontSize: 11 }}>{infoText}</span>
+                <span style={{ color: "#ff7070", fontSize: 11 }}>{beat1Info}</span>
             </div>
+
+            {/* Zeile 2: Vocal Marker */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px 4px" }}>
+                <button onClick={handleSetVocalStart}
+                    style={{ ...BTN, background: "#001a22", borderColor: "#00dcff", color: "#00dcff" }}>
+                    VS setzen
+                </button>
+                <button
+                    onClick={handleJumpToVocalEnd}
+                    disabled={vocalEnd === null}
+                    style={{ ...BTN, background: "#1a1000", borderColor: "#ff9600", color: "#ff9600",
+                        opacity: vocalEnd === null ? 0.4 : 1 }}>
+                    ⏭ zu VE
+                </button>
+                <button onClick={handleSetVocalEnd}
+                    style={{ ...BTN, background: "#1a1000", borderColor: "#ff9600", color: "#ff9600" }}>
+                    VE setzen
+                </button>
+                <span style={{ color: "#80d0e0", fontSize: 11 }}>{vocalInfo}</span>
+            </div>
+
+            {/* Zeile 3: Marker-Navigation ◀ ▶ */}
+            {(() => {
+                const markers = getMarkersFromState();
+                const t = currentTime;
+                const prevM = [...markers].reverse().find(m => m.time < t - 0.1);
+                const nextM = markers.find(m => m.time > t + 0.1);
+                return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px 4px" }}>
+                        <button
+                            onClick={handlePrevMarker}
+                            disabled={!prevM}
+                            style={{ ...BTN, background: "#151525", borderColor: "#6688cc", color: "#6688cc",
+                                opacity: prevM ? 1 : 0.35, minWidth: 28 }}>
+                            ◀
+                        </button>
+                        <span style={{ color: "#6688cc", fontSize: 11, minWidth: 32, textAlign: "right" }}>
+                            {prevM ? prevM.label : "–"}
+                        </span>
+                        <span style={{ color: "#445", fontSize: 11 }}>|</span>
+                        <span style={{ color: "#6688cc", fontSize: 11, minWidth: 32 }}>
+                            {nextM ? nextM.label : "–"}
+                        </span>
+                        <button
+                            onClick={handleNextMarker}
+                            disabled={!nextM}
+                            style={{ ...BTN, background: "#151525", borderColor: "#6688cc", color: "#6688cc",
+                                opacity: nextM ? 1 : 0.35, minWidth: 28 }}>
+                            ▶
+                        </button>
+                    </div>
+                );
+            })()}
         </div>
     );
 }
