@@ -17,16 +17,17 @@ const TYPE_OPTIONS: {
     label: string;
     role: TransitionPoint["role"];
     bars: TransitionPoint["bars"];
+    lengthBeats: TransitionPoint["lengthBeats"];
 }[] = [
-    { key: "loop-out-8",  label: "Loop-Out 8",  role: "loop-out",    bars: 8    },
-    { key: "loop-out-16", label: "Loop-Out 16", role: "loop-out",    bars: 16   },
-    { key: "loop-out-32", label: "Loop-Out 32", role: "loop-out",    bars: 32   },
-    { key: "cut-out",     label: "Cut-Out",     role: "cut-out",     bars: null },
-    { key: "loop-in-8",   label: "Loop-In 8",   role: "loop-in",     bars: 8    },
-    { key: "loop-in-16",  label: "Loop-In 16",  role: "loop-in",     bars: 16   },
-    { key: "loop-in-32",  label: "Loop-In 32",  role: "loop-in",     bars: 32   },
-    { key: "cut-in",      label: "Cut-In",      role: "cut-in",      bars: null },
-    { key: "passage",     label: "Passage",     role: "passage-out", bars: null },
+    { key: "loop-out-8",  label: "Loop-Out 8",  role: "loop-out", bars: 8,    lengthBeats: 8    },
+    { key: "loop-out-16", label: "Loop-Out 16", role: "loop-out", bars: 16,   lengthBeats: 16   },
+    { key: "loop-out-32", label: "Loop-Out 32", role: "loop-out", bars: 32,   lengthBeats: 32   },
+    { key: "cut-out",     label: "Cut-Out",     role: "cut-out",  bars: null, lengthBeats: null },
+    { key: "loop-in-8",   label: "Loop-In 8",   role: "loop-in",  bars: 8,    lengthBeats: 8    },
+    { key: "loop-in-16",  label: "Loop-In 16",  role: "loop-in",  bars: 16,   lengthBeats: 16   },
+    { key: "loop-in-32",  label: "Loop-In 32",  role: "loop-in",  bars: 32,   lengthBeats: 32   },
+    { key: "cut-in",      label: "Cut-In",      role: "cut-in",   bars: null, lengthBeats: null },
+    { key: "passage",     label: "Passage",     role: "passage",  bars: null, lengthBeats: null },
 ];
 
 function formatTime(s: number): string {
@@ -275,7 +276,7 @@ export default function MixPlayer({
     const [editState, setEditState] = useState<EditState | null>(null);
 
     function defaultSettings(): TransitionSettings {
-        return { fade: "none", fadeDurationBeats: 16, eq: "none", effect: "none", style: "soft" };
+        return { fade: "none", fadeDurationBeats: 16, eq: "none", effect: "none", style: "soft", notes: "" };
     }
 
     function openEdit(point: TransitionPoint, deck: "A" | "B") {
@@ -338,8 +339,8 @@ export default function MixPlayer({
                 {row("EQ", ([
                     { v: "none" as TransitionEQ, label: "Kein" },
                     { v: "bass-swap" as TransitionEQ, label: "Bass-Swap" },
-                    { v: "filter-hpf" as TransitionEQ, label: "HPF-Filter" },
-                    { v: "filter-lpf" as TransitionEQ, label: "LPF-Filter" },
+                    { v: "hpf-filter" as TransitionEQ, label: "HPF-Filter" },
+                    { v: "lpf-filter" as TransitionEQ, label: "LPF-Filter" },
                 ]).map(({ v, label }) => (
                     <button key={v} style={s.eq === v ? active : inactive}
                         onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, eq: v } } : es)}>
@@ -359,7 +360,7 @@ export default function MixPlayer({
                 )))}
                 {row("Stil", ([
                     { v: "soft" as TransitionStyle, label: "Soft" },
-                    { v: "hard" as TransitionStyle, label: "Hard-Cut" },
+                    { v: "hard-cut" as TransitionStyle, label: "Hard-Cut" },
                 ]).map(({ v, label }) => (
                     <button key={v} style={s.style === v ? active : inactive}
                         onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, style: v } } : es)}>
@@ -368,7 +369,7 @@ export default function MixPlayer({
                 )))}
                 {row("Notiz", (
                     <input type="text" placeholder="optional" value={s.notes ?? ""}
-                        onChange={e => setEditState(es => es ? { ...es, settings: { ...es.settings, notes: e.target.value || undefined } } : es)}
+                        onChange={e => setEditState(es => es ? { ...es, settings: { ...es.settings, notes: e.target.value } } : es)}
                         style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 6px" }}
                     />
                 ))}
@@ -754,6 +755,7 @@ export default function MixPlayer({
                                         id: `manual-${opt.role}-${Math.round(curTime * 10)}`,
                                         role: opt.role,
                                         bars: opt.bars,
+                                        lengthBeats: opt.lengthBeats,
                                         timeSeconds: Math.round(curTime * 10) / 10,
                                         source: "manual",
                                         label: opt.label,
@@ -1004,6 +1006,7 @@ export default function MixPlayer({
                                     id: `B-manual-${opt.role}-${nxtTime.toFixed(2)}`,
                                     role: opt.role,
                                     bars: opt.bars,
+                                    lengthBeats: opt.lengthBeats,
                                     timeSeconds: nxtTime,
                                     source: "manual",
                                     label: opt.label,

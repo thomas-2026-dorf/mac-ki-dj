@@ -18,8 +18,9 @@ export const ROLE_COLORS: Record<TransitionPointRole, { bg: string; border: stri
     "loop-in":     { bg: "rgba(34,197,94,0.15)",   border: "rgba(34,197,94,0.5)",   text: "#4ade80" }, // grün
     "cut-out":     { bg: "rgba(239,68,68,0.15)",   border: "rgba(239,68,68,0.5)",   text: "#f87171" }, // rot
     "cut-in":      { bg: "rgba(239,68,68,0.15)",   border: "rgba(239,68,68,0.5)",   text: "#f87171" }, // rot
-    "passage-out": { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.5)",  text: "#60a5fa" }, // blau
-    "passage-in":  { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.5)",  text: "#60a5fa" }, // blau
+    "passage":     { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.5)",  text: "#60a5fa" }, // blau
+    "passage-out": { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.5)",  text: "#60a5fa" }, // blau (Altdaten)
+    "passage-in":  { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.5)",  text: "#60a5fa" }, // blau (Altdaten)
 };
 
 export function suggestTransitionPoints(track: Track): TransitionPoint[] {

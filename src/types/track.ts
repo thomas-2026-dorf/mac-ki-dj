@@ -28,12 +28,15 @@ export type TrackLoop = {
     purpose: "transition" | "outro-builder" | "emergency";
 };
 
-export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage-out" | "passage-in";
+// "passage-out" / "passage-in" bleiben für Altdaten; neue Logik verwendet "passage"
+export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage" | "passage-out" | "passage-in";
 
 export type TransitionFade = "none" | "fade" | "crossfade";
-export type TransitionEQ = "none" | "bass-swap" | "filter-hpf" | "filter-lpf";
+// "filter-hpf" / "filter-lpf" bleiben für Altdaten; neue Logik verwendet "hpf-filter" / "lpf-filter"
+export type TransitionEQ = "none" | "bass-swap" | "hpf-filter" | "lpf-filter" | "filter-hpf" | "filter-lpf";
 export type TransitionEffect = "none" | "echo-out" | "backspin" | "vinyl-brake";
-export type TransitionStyle = "soft" | "hard";
+// "hard" bleibt für Altdaten; neue Logik verwendet "hard-cut"
+export type TransitionStyle = "soft" | "hard-cut" | "hard";
 
 export type TransitionSettings = {
     fade: TransitionFade;
@@ -41,13 +44,14 @@ export type TransitionSettings = {
     eq: TransitionEQ;
     effect: TransitionEffect;
     style: TransitionStyle;
-    notes?: string;
+    notes: string;
 };
 
 export type TransitionPoint = {
     id: string;
     role: TransitionPointRole;
-    bars: 8 | 16 | 32 | null; // null = cut (kein Loop)
+    bars: 8 | 16 | 32 | null;         // Altfeld – bleibt für bestehende Daten
+    lengthBeats?: 8 | 16 | 32 | null; // Neues Führungsfeld für Automix-Logik
     timeSeconds: number;
     source: "auto" | "manual";
     label?: string;
