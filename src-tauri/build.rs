@@ -7,4 +7,11 @@ fn main() {
         .include("vendor/superpowered/Superpowered")
         .flag_if_supported("-std=c++17")
         .compile("superpowered_test");
+
+    cc::Build::new()
+        .cpp(true)
+        .file("superpowered_engine/tkdj_superpowered_engine.cpp")
+        .include("vendor/superpowered/Superpowered")
+        .flag_if_supported("-std=c++17")
+        .compile("superpowered_engine");
 }

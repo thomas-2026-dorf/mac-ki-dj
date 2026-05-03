@@ -6,6 +6,54 @@ extern "C" {
     fn superpowered_test() -> i32;
 }
 
+extern "C" {
+    fn tkdj_engine_init();
+    fn tkdj_engine_load_track(path: *const std::ffi::c_char);
+    fn tkdj_engine_play();
+    fn tkdj_engine_pause();
+    fn tkdj_engine_stop();
+    fn tkdj_engine_get_position_seconds() -> f64;
+    fn tkdj_engine_get_duration_seconds() -> f64;
+}
+
+#[tauri::command]
+fn superpowered_engine_init() {
+    unsafe { tkdj_engine_init(); }
+}
+
+#[tauri::command]
+fn superpowered_engine_load_track(path: String) {
+    use std::ffi::CString;
+    if let Ok(c_path) = CString::new(path) {
+        unsafe { tkdj_engine_load_track(c_path.as_ptr()); }
+    }
+}
+
+#[tauri::command]
+fn superpowered_engine_play() {
+    unsafe { tkdj_engine_play(); }
+}
+
+#[tauri::command]
+fn superpowered_engine_pause() {
+    unsafe { tkdj_engine_pause(); }
+}
+
+#[tauri::command]
+fn superpowered_engine_stop() {
+    unsafe { tkdj_engine_stop(); }
+}
+
+#[tauri::command]
+fn superpowered_engine_get_position_seconds() -> f64 {
+    unsafe { tkdj_engine_get_position_seconds() }
+}
+
+#[tauri::command]
+fn superpowered_engine_get_duration_seconds() -> f64 {
+    unsafe { tkdj_engine_get_duration_seconds() }
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -476,7 +524,14 @@ pub fn run() {
             tkdj_file_exists,
             tkdj_read_binary_file,
             tkdj_read_text_file,
-            tkdj_write_text_file
+            tkdj_write_text_file,
+            superpowered_engine_init,
+            superpowered_engine_load_track,
+            superpowered_engine_play,
+            superpowered_engine_pause,
+            superpowered_engine_stop,
+            superpowered_engine_get_position_seconds,
+            superpowered_engine_get_duration_seconds
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
