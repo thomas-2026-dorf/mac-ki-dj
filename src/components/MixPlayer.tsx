@@ -7,7 +7,8 @@ import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import CdjWaveform from "./CdjWaveform";
 import { computeGridOffset, GRID_OFFSET_TOL_ENG, GRID_OFFSET_TOL_WIDE } from "../modules/analysis/gridOffsetAnalyzer";
 import { detectDownbeatPhase } from "../modules/analysis/downbeatDetector";
-import { loadAnalysisCache } from "../modules/analysis/analysisCache";
+import { loadAnalysisCache, saveAnalysisCache } from "../modules/analysis/analysisCache";
+import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
 
 const TYPE_OPTIONS: {
     key: string;
@@ -30,7 +31,7 @@ function formatTime(s: number): string {
 }
 
 function transitionLabel(plan: MixTransitionPlan): string {
-    return plan.type === "blend" ? `Blend ${Math.round(plan.blendDurationSeconds)}s` : "Cut";
+    return plan.type === "blend" ? `Überblenden ${Math.round(plan.blendDurationSeconds)}s` : "Schnitt";
 }
 
 type MixPlayerProps = {
@@ -53,6 +54,8 @@ type MixPlayerProps = {
     onSaveTransitionPointB?: (point: TransitionPoint) => void;
     onRemoveTransitionPointB?: (pointId: string) => void;
     onSetVolume?: (v: number) => void;
+    onSetRateNext?: (rate: number) => void;
+    onSetRateCur?: (rate: number) => void;
 };
 
 
@@ -74,6 +77,8 @@ export default function MixPlayer({
     onSaveTransitionPointB,
     onRemoveTransitionPointB,
     onSetVolume,
+    onSetRateNext,
+    onSetRateCur,
 }: MixPlayerProps) {
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
@@ -90,6 +95,38 @@ export default function MixPlayer({
 
     const waveA = current?.analysis?.waveform ?? [];
     const waveB = next?.analysis?.waveform ?? [];
+
+    function syncBtoA() {
+        const masterBpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
+        const slaveBpm  = next?.analysis?.detectedBpm  ?? next?.bpm  ?? 0;
+        if (!masterBpm || !slaveBpm || !next) return;
+        // Rate angleichen
+        onSetRateNext?.(masterBpm / slaveBpm);
+        // Phase-Sync: nächsten Beat im Slave auf Master-Beat-Phase legen
+        const masterGrid = current?.analysis?.beatGridStartSeconds;
+        const slaveGrid  = next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+        if (masterGrid === undefined || slaveGrid == null) return;
+        const masterInterval = 60 / masterBpm;
+        const slaveInterval  = 60 / slaveBpm;
+        const masterFrac = ((curTime - masterGrid) % masterInterval + masterInterval) % masterInterval;
+        const k = Math.round((nxtTime - slaveGrid) / slaveInterval);
+        onDeckBSeek?.(slaveGrid + k * slaveInterval + (masterFrac / masterInterval) * slaveInterval);
+    }
+
+    function syncAtoB() {
+        const masterBpm = next?.analysis?.detectedBpm  ?? next?.bpm  ?? 0;
+        const slaveBpm  = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
+        if (!masterBpm || !slaveBpm || !current) return;
+        onSetRateCur?.(masterBpm / slaveBpm);
+        const masterGrid = next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+        const slaveGrid  = current?.analysis?.beatGridStartSeconds;
+        if (masterGrid == null || slaveGrid === undefined) return;
+        const masterInterval = 60 / masterBpm;
+        const slaveInterval  = 60 / slaveBpm;
+        const masterFrac = ((nxtTime - masterGrid) % masterInterval + masterInterval) % masterInterval;
+        const k = Math.round((curTime - slaveGrid) / slaveInterval);
+        onSeek(slaveGrid + k * slaveInterval + (masterFrac / masterInterval) * slaveInterval);
+    }
 
     useEffect(() => {
         if (!current || !next) return;
@@ -207,11 +244,16 @@ export default function MixPlayer({
     const [activityRegions, setActivityRegions] = useState<{ startSeconds: number; endSeconds: number; confidence: number }[] | null>(null);
     const [alignedVocalRegions, setAlignedVocalRegions] = useState<{ startSeconds: number; endSeconds: number }[] | null>(null);
     const [vocalMixZones, setVocalMixZones] = useState<{ type: "mix-in" | "mix-out"; startSeconds: number; endSeconds: number }[] | null>(null);
+    const [waveformPeaksOverride, setWaveformPeaksOverride] = useState<WaveformPeaks | null>(null);
+    const [nextWaveformPeaksOverride, setNextWaveformPeaksOverride] = useState<WaveformPeaks | null>(null);
+    const [nextBeatsOverride, setNextBeatsOverride] = useState<number[] | null>(null);
+    const [nextGridStartOverride, setNextGridStartOverride] = useState<number | null>(null);
 
     useEffect(() => {
         setActivityRegions(null);
         setAlignedVocalRegions(null);
         setVocalMixZones(null);
+        setWaveformPeaksOverride(null);
         if (!current) return;
         // Bevorzugt aus Cache laden (enthält activityRegions nach Neuanalyse)
         const logRegions = (regions: typeof activityRegions) => {
@@ -236,6 +278,9 @@ export default function MixPlayer({
                     }
                     setAlignedVocalRegions(src?.alignedVocalRegions ?? null);
                     setVocalMixZones(src?.vocalMixZones ?? null);
+                    if (src?.waveformPeaks && !current.analysis?.waveformPeaks) {
+                        setWaveformPeaksOverride(src.waveformPeaks);
+                    }
                 })
                 .catch(() => {
                     const src = current.analysis as any;
@@ -280,6 +325,24 @@ export default function MixPlayer({
     useEffect(() => {
         lastBeatNBRef.current = -1;
         setTestOffsetB(0);
+        setNextBeatsOverride(null);
+        setNextGridStartOverride(null);
+    }, [next?.id]);
+    useEffect(() => {
+        setNextWaveformPeaksOverride(null);
+        if (!next?.url) return;
+        const needsPeaks = !next.analysis?.waveformPeaks;
+        const needsBeats = !next.analysis?.beats?.length;
+        const needsGridStart = next.analysis?.beatGridStartSeconds === undefined;
+        if (!needsPeaks && !needsBeats && !needsGridStart) return;
+        loadAnalysisCache(next.url)
+            .then(cached => {
+                if (cached?.waveformPeaks && needsPeaks) setNextWaveformPeaksOverride(cached.waveformPeaks);
+                if (cached?.beats?.length && needsBeats) setNextBeatsOverride(cached.beats);
+                if (cached?.beatGridStartSeconds !== undefined && needsGridStart) setNextGridStartOverride(cached.beatGridStartSeconds);
+            })
+            .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [next?.id]);
     useEffect(() => {
         lastBeatNRef.current  = -1;
@@ -335,7 +398,7 @@ export default function MixPlayer({
 
     const statusLabel =
         status === "transitioning" ? "ÜBERGANG" :
-        status === "playing" ? "NOW PLAYING" :
+        status === "playing" ? "LÄUFT" :
         status === "loading" ? "LADEN…" :
         status === "paused" ? "PAUSIERT" :
         "TK-DJ AUTOMIX";
@@ -351,7 +414,7 @@ export default function MixPlayer({
                         <>
                             <span className="mix-track-title">{current.title}</span>
                             <span className="mix-track-meta">
-                                {current.artist} · {current.bpm} BPM · {current.key} · NRG {current.energy}
+                                {current.artist} · {current.bpm} BPM · {current.key} · ENR {current.energy}
                                 <span className="mix-timecode">{formatTime(curTime)} / {formatTime(curDur)}</span>
                             </span>
                         </>
@@ -362,7 +425,7 @@ export default function MixPlayer({
 
                 <div className="mix-controls">
                     {status === "idle" && (
-                        <button className="mix-btn mix-btn-start" onClick={onStartAutomix}>▶ Start</button>
+                        <button className="mix-btn mix-btn-start" onClick={onStartAutomix}>▶ Starten</button>
                     )}
                     {status === "paused" && (
                         <button className="mix-btn mix-btn-play" onClick={onPlay}>▶ Weiter</button>
@@ -374,10 +437,17 @@ export default function MixPlayer({
                         <button className="mix-btn mix-btn-skip" onClick={onSkip} title="Sofort zum nächsten Track">⏭</button>
                     )}
                     {(isPlaying || status === "paused") && (
-                        <button className="mix-btn mix-btn-stop" onClick={onStop} title="Stopp">■</button>
+                        <button className="mix-btn mix-btn-stop" onClick={onStop} title="Auswerfen">■</button>
                     )}
                     {(isPlaying || status === "paused") && (
-                        <button className="mix-btn mix-btn-reset" onClick={onReset} title="Reset + Queue leeren">↺</button>
+                        <button className="mix-btn mix-btn-reset" onClick={onReset} title="Zurücksetzen + Queue leeren">↺</button>
+                    )}
+                    {nxtPlaying && current && next && (
+                        <button
+                            onClick={syncAtoB}
+                            title="Deck A auf Deck-B-BPM und -Phase synchronisieren"
+                            style={{ marginLeft: "4px", background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.45)", borderRadius: "4px", color: "#34d399", padding: "2px 8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, letterSpacing: "0.03em" }}
+                        >SYNC</button>
                     )}
                     <button
                         onClick={async () => {
@@ -387,7 +457,7 @@ export default function MixPlayer({
                             onSetVolume?.(next ? 0.25 : 1.0);
                             setMetroOn(next);
                         }}
-                        title="Metronom Grid-Debug"
+                        title="Metronom-Grid-Debug"
                         style={{ marginLeft: "8px", background: metroOn ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.05)", border: `1px solid ${metroOn ? "#fbbf24" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: metroOn ? "#fbbf24" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
                     >♩</button>
                     <button
@@ -451,6 +521,30 @@ export default function MixPlayer({
                         title={debugGridOffsetSec !== null ? `Grid-Offset aktiv: ${(debugGridOffsetSec * 1000).toFixed(1)} ms – klicken zum Neu-Messen` : "Grid-Offset Intro/Outro messen"}
                         style={{ marginLeft: "4px", background: debugGridOffsetSec !== null ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.05)", border: `1px solid ${debugGridOffsetSec !== null ? "#10b981" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: debugGridOffsetSec !== null ? "#10b981" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
                     >⊡</button>
+                    {current?.url && current.analysis?.beatGridStartSeconds !== undefined && (current.analysis?.detectedBpm ?? current.bpm) && (
+                        <button
+                            onClick={async () => {
+                                const url = current.url!;
+                                const bpm = current.analysis?.detectedBpm ?? current.bpm ?? 0;
+                                const rawGridStart = current.analysis!.beatGridStartSeconds!;
+                                if (!bpm) return;
+                                const beatInterval = 60 / bpm;
+                                const effectiveGridStart = rawGridStart + (debugGridOffsetSec ?? 0);
+                                // Nächsten Grid-Beat zur aktuellen Playhead-Position finden
+                                const k = Math.round((curTime - effectiveGridStart) / beatInterval);
+                                // Grid so verschieben, dass Beat k die „1" wird (k % 4 === 0)
+                                const shift = ((k % 4) + 4) % 4;
+                                const newGridStart = effectiveGridStart + shift * beatInterval;
+                                const cached = await loadAnalysisCache(url);
+                                if (!cached) return;
+                                await saveAnalysisCache(url, { ...cached, beatGridStartSeconds: newGridStart });
+                                setDebugGridOffsetSec(newGridStart - rawGridStart || null);
+                                setTestOffset(0);
+                            }}
+                            title="Playhead-Position als '1' setzen und speichern (.tkdj)"
+                            style={{ marginLeft: "4px", background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: "4px", color: "#818cf8", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
+                        >1↓</button>
+                    )}
                 </div>
             </div>
 
@@ -550,7 +644,7 @@ export default function MixPlayer({
                                         Auto: Phase {downbeatSuggestion.phase} · {pct}%
                                     </span>
                                     <span style={{ fontSize: "11px", color: "#fbbf24" }}>
-                                        Test +{testOffset} Beats → effektiv Phase {effectivePhase}
+                                        Test +{testOffset} Beats → effektive Phase {effectivePhase}
                                     </span>
                                 </>
                             );
@@ -560,7 +654,7 @@ export default function MixPlayer({
                         return (
                             <>
                                 <span style={{ fontSize: "11px", color: statusColor, fontWeight: 700 }}>
-                                    Auto-Downbeat: {statusLabel}
+                                    Downbeat: {statusLabel}
                                 </span>
                                 <span style={{ fontSize: "11px", color: "#64748b" }}>
                                     Phase {downbeatSuggestion.phase} · {pct}% · Vorschlag: Grid +{downbeatSuggestion.phase} Beat{downbeatSuggestion.phase !== 1 ? "s" : ""}
@@ -581,10 +675,10 @@ export default function MixPlayer({
                     <button
                         onClick={() => setTestOffset(0)}
                         style={{ background: testOffset === 0 ? "rgba(99,102,241,0.12)" : "rgba(255,255,255,0.04)", border: `1px solid ${testOffset === 0 ? "#818cf8" : "rgba(255,255,255,0.12)"}`, borderRadius: "4px", color: testOffset === 0 ? "#818cf8" : "#475569", fontSize: "11px", padding: "2px 8px", cursor: "pointer" }}
-                    >Reset</button>
+                    >Zurück</button>
                     {testOffset > 0 && (
                         <span style={{ fontSize: "11px", color: "#fbbf24", fontWeight: 700, marginLeft: "4px" }}>
-                            ● Test-Phase aktiv: +{testOffset} Beat{testOffset !== 1 ? "s" : ""}
+                            ● Testphase aktiv: +{testOffset} Beat{testOffset !== 1 ? "s" : ""}
                         </span>
                     )}
                 </div>
@@ -606,7 +700,7 @@ export default function MixPlayer({
                         <CdjWaveform
                             trackId={current.id}
                             waveform={waveA}
-                            waveformPeaks={current.analysis?.waveformPeaks}
+                            waveformPeaks={current.analysis?.waveformPeaks ?? waveformPeaksOverride ?? undefined}
                             duration={curDur}
                             currentTime={curTime}
                             onSeek={onSeek}
@@ -630,7 +724,7 @@ export default function MixPlayer({
                         />
                     );
                 })() : (
-                    <div className="mix-waveform-empty">Kein Track geladen</div>
+                    <div className="mix-waveform-empty">Kein Track aktiv</div>
                 )}
             </div>
 
@@ -638,7 +732,7 @@ export default function MixPlayer({
             <div className="mix-track-row mix-track-row-next">
                 <div className="mix-track-info">
                     <span className="mix-status-label">
-                        UP NEXT
+                        ALS NÄCHSTES
                         {plan && <span className="mix-transition-badge">{transitionLabel(plan)}</span>}
                         {state?.timeToTransition != null && (
                             <span className="mix-countdown"> in {formatTime(state.timeToTransition)}</span>
@@ -648,7 +742,7 @@ export default function MixPlayer({
                         <>
                             <span className="mix-track-title">{next.title}</span>
                             <span className="mix-track-meta">
-                                {next.artist} · {next.bpm} BPM · {next.key} · NRG {next.energy}
+                                {next.artist} · {next.bpm} BPM · {next.key} · ENR {next.energy}
                                 <span className="mix-timecode">{formatTime(nxtTime)} / {formatTime(nxtDur)}</span>
                             </span>
                         </>
@@ -662,6 +756,13 @@ export default function MixPlayer({
                     )}
                     {next && nxtPlaying && (
                         <button className="mix-btn mix-btn-pause" onClick={onDeckBPause} title="Deck B Vorhör pausieren">⏸</button>
+                    )}
+                    {next && current && (
+                        <button
+                            onClick={syncBtoA}
+                            title="Deck B auf Deck-A-BPM und -Phase synchronisieren"
+                            style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.45)", borderRadius: "4px", color: "#34d399", padding: "2px 8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, letterSpacing: "0.03em" }}
+                        >SYNC</button>
                     )}
                     {(isPlaying || status === "paused") && next && (
                         <button className="mix-btn mix-btn-skip" onClick={onSkip} title="Sofort zu Deck B wechseln">⏭</button>
@@ -731,13 +832,13 @@ export default function MixPlayer({
                         key={next.id}
                         trackId={next.id}
                         waveform={waveB}
-                        waveformPeaks={next.analysis?.waveformPeaks}
+                        waveformPeaks={next.analysis?.waveformPeaks ?? nextWaveformPeaksOverride ?? undefined}
                         duration={nxtDur}
                         currentTime={nxtTime}
                         onSeek={onDeckBSeek ?? (() => {})}
                         bpm={next.analysis?.detectedBpm ?? next.bpm}
-                        beatGridStartSeconds={next.analysis?.beatGridStartSeconds}
-                        beats={next.analysis?.beats}
+                        beatGridStartSeconds={next.analysis?.beatGridStartSeconds ?? nextGridStartOverride ?? undefined}
+                        beats={next.analysis?.beats ?? nextBeatsOverride ?? undefined}
                         metroBeat={metroBeatB}
                         phaseOffset={testOffsetB}
                     />
@@ -746,9 +847,9 @@ export default function MixPlayer({
                 )}
             </div>
 
-            {next && next.analysis?.beatGridStartSeconds !== undefined && (
+            {next && (next.analysis?.beatGridStartSeconds !== undefined || nextGridStartOverride !== null) && (
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 16px 4px", background: "rgba(10,16,30,0.8)" }}>
-                    <span style={{ fontSize: "10px", color: "#475569" }}>Deck B Phase:</span>
+                    <span style={{ fontSize: "10px", color: "#475569" }}>Deck-B-Phase:</span>
                     <button
                         onClick={() => setTestOffsetB(o => (o - 1 + 4) % 4)}
                         style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
@@ -764,7 +865,29 @@ export default function MixPlayer({
                         <button
                             onClick={() => setTestOffsetB(0)}
                             style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#64748b", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
-                        >Reset</button>
+                        >Zurück</button>
+                    )}
+                    {next?.url && (next.analysis?.detectedBpm ?? next.bpm) && (
+                        <button
+                            onClick={async () => {
+                                const url = next.url!;
+                                const bpm = next.analysis?.detectedBpm ?? next.bpm ?? 0;
+                                const rawGridStart = next.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+                                if (!bpm || rawGridStart === undefined || rawGridStart === null) return;
+                                const beatInterval = 60 / bpm;
+                                // Nächsten Grid-Beat zur aktuellen Deck-B-Position finden
+                                const k = Math.round((nxtTime - rawGridStart) / beatInterval);
+                                const shift = ((k % 4) + 4) % 4;
+                                const newGridStart = rawGridStart + shift * beatInterval;
+                                const cached = await loadAnalysisCache(url);
+                                if (!cached) return;
+                                await saveAnalysisCache(url, { ...cached, beatGridStartSeconds: newGridStart });
+                                setNextGridStartOverride(newGridStart);
+                                setTestOffsetB(0);
+                            }}
+                            title="Deck-B-Position als '1' setzen und speichern (.tkdj)"
+                            style={{ marginLeft: "4px", background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: "3px", color: "#818cf8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
+                        >1↓</button>
                     )}
                 </div>
             )}

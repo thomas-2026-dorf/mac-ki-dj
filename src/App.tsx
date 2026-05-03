@@ -255,7 +255,7 @@ function App() {
 
   function handleStop() {
     automixActiveRef.current = false;
-    mixEngineRef.current?.stop();
+    mixEngineRef.current?.ejectCurrent();
   }
 
   function handleReset() {
@@ -275,8 +275,7 @@ function App() {
     if (!engine) return;
     const current = engine.getState().currentTrack;
     if (!current) {
-      // Kein laufender Track → zur Queue hinzufügen
-      addTrackToQueue(track);
+      engine.loadOnlyNext(track);
       return;
     }
     const plan = makePlan(current, track);
@@ -346,6 +345,8 @@ function App() {
         onDeckBPause={() => mixEngineRef.current?.pauseNext()}
         onDeckBStop={() => mixEngineRef.current?.stopNext()}
         onDeckBSeek={(t) => mixEngineRef.current?.seekNext(t)}
+        onSetRateNext={(r) => mixEngineRef.current?.setRateNext(r)}
+        onSetRateCur={(r) => mixEngineRef.current?.setRateCur(r)}
         onSaveTransitionPoint={handleSaveTransitionPoint}
         onRemoveTransitionPoint={handleRemoveTransitionPoint}
         onSaveTransitionPointB={handleSaveTransitionPointB}

@@ -282,6 +282,17 @@ export class MixEngine {
         this.emitState();
     }
 
+    setRateNext(rate: number): void {
+        if (!this.nxt.track) return;
+        this.nxt.audio.setRate(rate);
+        this.emitState();
+    }
+
+    setRateCur(rate: number): void {
+        this.cur.audio.setRate(rate);
+        this.emitState();
+    }
+
     setVolume(v: number): void {
         this.slots.forEach(s => s.audio.setGain(v));
     }
@@ -299,6 +310,41 @@ export class MixEngine {
         this.transitionStarted = false;
         this.status = "idle";
         this.emitState();
+    }
+
+    ejectCurrent(): void {
+        this.prepareGen++;
+        this.cur.audio.pause();
+        this.cur.audio.setGain(1);
+        this.cur.track = null;
+        this.cur.plan = null;
+        this.transitionStarted = false;
+        if (!this.nxt.audio.isPlaying()) this.stopTick();
+        this.status = "idle";
+        this.emitState();
+    }
+
+    async loadOnlyNext(track: Track): Promise<void> {
+        if (!track.url) return;
+        this.prepareGen++;
+        const myGen = this.prepareGen;
+        this.nxt.track = track;
+        this.nxt.plan = null;
+        this.nxt.audio.setGain(1);
+        this.emitState();
+        try {
+            const wavPath = await ensureWavCache(track.url);
+            if (myGen !== this.prepareGen) return;
+            await this.nxt.audio.load(wavPath);
+            if (myGen !== this.prepareGen) return;
+            this.nxt.audio.onEnded(() => this.handleTrackEnded());
+            this.emitState();
+        } catch (e) {
+            console.error("loadOnlyNext failed:", e);
+            if (myGen !== this.prepareGen) return;
+            this.nxt.track = null;
+            this.emitState();
+        }
     }
 
     getState(): MixState {

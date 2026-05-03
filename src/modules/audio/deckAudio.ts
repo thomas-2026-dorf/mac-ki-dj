@@ -77,6 +77,8 @@ export function createDeckAudio(): DeckAudio {
 
     return {
         async load(wavPath: string): Promise<void> {
+            stopSource();
+            playing = false;
             const bytes: number[] = await invoke("tkdj_read_binary_file", { path: wavPath });
             const arrayBuffer = new Uint8Array(bytes).buffer;
             buffer = await ctx.decodeAudioData(arrayBuffer);

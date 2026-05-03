@@ -83,6 +83,14 @@ export default function CdjWaveform({
         return () => ro.disconnect();
     }, []);
 
+    // Canvas-Dimensionen nur setzen wenn canvasW sich ändert — setzt canvas.width zurück
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || canvasW === 0) return;
+        canvas.width = canvasW;
+        canvas.height = HEIGHT;
+    }, [canvasW]);
+
     const windowSec = BASE_WINDOW_SEC / zoomLevel;
     // Priorität: aktiver Drag > manueller View-Scroll > Playback-Position
     const centerTime = dragTime ?? viewCenterSec ?? currentTime;
@@ -97,8 +105,6 @@ export default function CdjWaveform({
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas || canvasW === 0) return;
-        canvas.width = canvasW;
-        canvas.height = HEIGHT;
 
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
@@ -382,7 +388,7 @@ export default function CdjWaveform({
                     <button
                         onClick={(e) => { e.stopPropagation(); setInternalPhaseOffset(o => (o - 1 + 4) % 4); }}
                         style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
-                        title="Grid-Phase um 1 Beat zurück"
+                        title="Grid 1 Beat zurück"
                     >Grid −1</button>
                     <span style={{ fontSize: "10px", color: phaseOffset === 0 ? "#475569" : "#fbbf24", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", background: "rgba(10,20,35,0.85)", padding: "1px 5px", borderRadius: "3px" }}>
                         {phaseOffset === 0 ? "Phase 0" : `+${phaseOffset} Beat${phaseOffset > 1 ? "s" : ""}`}
@@ -390,7 +396,7 @@ export default function CdjWaveform({
                     <button
                         onClick={(e) => { e.stopPropagation(); setInternalPhaseOffset(o => (o + 1) % 4); }}
                         style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
-                        title="Grid-Phase um 1 Beat vor"
+                        title="Grid 1 Beat vor"
                     >Grid +1</button>
                 </div>
             )}
@@ -428,7 +434,7 @@ export default function CdjWaveform({
                     color: "#334155", fontSize: "12px", pointerEvents: "none",
                     border: "1px dashed #1e3a5a", borderRadius: "4px",
                 }}>
-                    Keine Waveform-Daten — Track analysieren
+                    Keine Wellenform-Daten — Track analysieren
                 </div>
             )}
         </div>
