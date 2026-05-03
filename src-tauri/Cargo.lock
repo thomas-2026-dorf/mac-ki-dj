@@ -2258,6 +2258,7 @@ name = "mac-ki-dj"
 version = "0.1.0"
 dependencies = [
  "aubio",
+ "cc",
  "lofty",
  "serde",
  "serde_json",

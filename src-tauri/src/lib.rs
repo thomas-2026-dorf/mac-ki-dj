@@ -2,6 +2,10 @@ use stratum_dsp as _; // nur Test: Library laden
                       // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::Serialize;
 
+extern "C" {
+    fn superpowered_test() -> i32;
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -454,6 +458,11 @@ fn tkdj_write_text_file(path: String, content: String) -> Result<String, String>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    unsafe {
+        let result = superpowered_test();
+        println!("Superpowered Test Result: {}", result);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init()) // 🔥 MUSS DRIN SEIN
