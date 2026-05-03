@@ -19,10 +19,7 @@ export async function prepareTrackAnalysis(inputMp3: string, options?: { forceFr
                 return { success: true, analysis: cached, rustAnalysis: null, cached: true };
             }
         }
-
-        // External analysis disabled (Superpowered migration)
-        console.log("External analysis/stretch engine disabled (Superpowered migration)");
-        return { success: false, error: "External analysis/stretch engine disabled (Superpowered migration)" };
+        return { success: false, error: "Analysis disabled" };
     } catch (e) {
         return { success: false, error: String(e) };
     }

@@ -92,10 +92,9 @@ export class MixEngine {
             return;
         }
 
-        this.status = "playing";
-        this.cur.audio.play();
+        console.log("LOAD track", track.title);
         this.cur.audio.onEnded(() => this.handleTrackEnded());
-        this.startTick();
+        this.status = "paused";
         this.emitState();
     }
 
@@ -218,8 +217,10 @@ export class MixEngine {
     }
 
     pause(): void {
-        if (this.status !== "playing") return;
+        if (this.status === "idle" || this.status === "loading") return;
+        console.log("PAUSE triggered", this.status);
         this.cur.audio.pause();
+        if (this.status === "transitioning") this.nxt.audio.pause();
         this.status = "paused";
         this.stopTick();
         this.emitState();
@@ -227,6 +228,7 @@ export class MixEngine {
 
     resume(): void {
         if (this.status !== "paused") return;
+        console.log("PLAY triggered");
         this.cur.audio.play();
         this.status = "playing";
         this.startTick();

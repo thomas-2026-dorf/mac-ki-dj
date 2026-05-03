@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getSharedAudioContext } from "./audioContext";
 
 export type DeckAudio = {
@@ -79,8 +79,20 @@ export function createDeckAudio(): DeckAudio {
         async load(wavPath: string): Promise<void> {
             stopSource();
             playing = false;
-            const bytes: number[] = await invoke("tkdj_read_binary_file", { path: wavPath });
-            const arrayBuffer = new Uint8Array(bytes).buffer;
+
+            let arrayBuffer: ArrayBuffer;
+            try {
+                const url = convertFileSrc(wavPath);
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Asset fetch failed: ${response.status} ${wavPath}`);
+                arrayBuffer = await response.arrayBuffer();
+                console.log("[deckAudio] Asset-Protocol OK:", wavPath);
+            } catch (fetchErr) {
+                console.warn("[deckAudio] Asset fetch fehlgeschlagen, fallback auf invoke:", fetchErr);
+                const bytes = await invoke<number[]>("tkdj_read_binary_file", { path: wavPath });
+                arrayBuffer = new Uint8Array(bytes).buffer;
+            }
+
             buffer = await ctx.decodeAudioData(arrayBuffer);
             offsetBase = 0;
             playing = false;

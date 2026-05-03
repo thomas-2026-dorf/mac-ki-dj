@@ -55,6 +55,101 @@ fn superpowered_engine_get_duration_seconds() -> f64 {
 }
 
 #[tauri::command]
+fn superpowered_generate_waveform(path: String) -> Result<Vec<f32>, String> {
+    use std::fs::File;
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::probe::Hint;
+    use symphonia::default::{get_codecs, get_probe};
+
+    // Cache: einmal berechnen, danach sofort laden
+    let audio_path = std::path::Path::new(&path);
+    let cache_path = audio_path.parent()
+        .map(|p| p.join(".tkdj"))
+        .map(|d| d.join(format!("{}.peaks", audio_path.file_stem().unwrap_or_default().to_string_lossy())));
+
+    if let Some(ref cp) = cache_path {
+        if let Ok(bytes) = std::fs::read(cp) {
+            if bytes.len() % 4 == 0 && !bytes.is_empty() {
+                let peaks: Vec<f32> = bytes.chunks_exact(4)
+                    .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                    .collect();
+                return Ok(peaks);
+            }
+        }
+    }
+
+    let file = File::open(&path)
+        .map_err(|e| format!("Datei nicht gefunden: {}", e))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let ext = audio_path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp3");
+    let mut hint = Hint::new();
+    hint.with_extension(ext);
+
+    let probed = get_probe()
+        .format(&hint, mss, &Default::default(), &Default::default())
+        .map_err(|e| format!("Format nicht erkannt: {}", e))?;
+
+    let mut format = probed.format;
+    let track = format.default_track().ok_or("Kein Audio-Track")?;
+    let track_id = track.id;
+    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100) as usize;
+
+    let mut decoder = get_codecs()
+        .make(&track.codec_params, &Default::default())
+        .map_err(|e| format!("Decoder-Fehler: {}", e))?;
+
+    // Sequentieller einmaliger Pass: 150 Peaks/Sekunde
+    const PEAKS_PER_SECOND: usize = 150;
+    let window_size = (sample_rate / PEAKS_PER_SECOND).max(1);
+    let mut peaks: Vec<f32> = Vec::new();
+    let mut window_peak = 0.0f32;
+    let mut sample_in_window = 0usize;
+
+    loop {
+        let pkt = match format.next_packet() {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        if pkt.track_id() != track_id { continue; }
+
+        let decoded = match decoder.decode(&pkt) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let spec = *decoded.spec();
+        let mut buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+        buf.copy_interleaved_ref(decoded);
+
+        for frame in buf.samples().chunks(channels) {
+            let mono = frame.iter().map(|s| s.abs()).sum::<f32>() / channels as f32;
+            if mono > window_peak { window_peak = mono; }
+            sample_in_window += 1;
+            if sample_in_window >= window_size {
+                peaks.push(window_peak);
+                window_peak = 0.0;
+                sample_in_window = 0;
+            }
+        }
+    }
+    if sample_in_window > 0 { peaks.push(window_peak); }
+
+    // Cache speichern
+    if let Some(ref cp) = cache_path {
+        if let Some(parent) = cp.parent() { let _ = std::fs::create_dir_all(parent); }
+        let bytes: Vec<u8> = peaks.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let _ = std::fs::write(cp, bytes);
+    }
+
+    Ok(peaks)
+}
+
+#[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
@@ -531,7 +626,8 @@ pub fn run() {
             superpowered_engine_pause,
             superpowered_engine_stop,
             superpowered_engine_get_position_seconds,
-            superpowered_engine_get_duration_seconds
+            superpowered_engine_get_duration_seconds,
+            superpowered_generate_waveform
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

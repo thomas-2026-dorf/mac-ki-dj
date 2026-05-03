@@ -24,7 +24,8 @@
         "scope": [
           "$AUDIO/**",
           "$DOWNLOAD/**",
-          "$HOME/**"
+          "$HOME/**",
+          "/Volumes/**"
         ]
       }
     }

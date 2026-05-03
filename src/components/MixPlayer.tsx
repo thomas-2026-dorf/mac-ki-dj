@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
 import { decideTransition } from "../modules/transition/autoMixPlanner";
@@ -100,12 +101,15 @@ export default function MixPlayer({
         const masterBpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
         const slaveBpm  = next?.analysis?.detectedBpm  ?? next?.bpm  ?? 0;
         if (!masterBpm || !slaveBpm || !next) return;
-        // Rate angleichen
+
+        // Rate: Slave auf Master-BPM bringen
         onSetRateNext?.(masterBpm / slaveBpm);
-        // Phase-Sync: nächsten Beat im Slave auf Master-Beat-Phase legen
-        const masterGrid = current?.analysis?.beatGridStartSeconds;
-        const slaveGrid  = next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
-        if (masterGrid === undefined || slaveGrid == null) return;
+
+        // Phase-Sync: firstbeat hat Vorrang vor Analyse-Wert
+        const masterGrid = curFirstBeat ?? current?.analysis?.beatGridStartSeconds;
+        const slaveGrid  = nxtFirstBeat ?? next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+        if (masterGrid == null || slaveGrid == null) return;
+
         const masterInterval = 60 / masterBpm;
         const slaveInterval  = 60 / slaveBpm;
         const masterFrac = ((curTime - masterGrid) % masterInterval + masterInterval) % masterInterval;
@@ -248,6 +252,42 @@ export default function MixPlayer({
     const [nextWaveformPeaksOverride, setNextWaveformPeaksOverride] = useState<WaveformPeaks | null>(null);
     const [nextBeatsOverride, setNextBeatsOverride] = useState<number[] | null>(null);
     const [nextGridStartOverride, setNextGridStartOverride] = useState<number | null>(null);
+
+    // Manuell gesetzte "1" aus .tkdj/*.firstbeat.json für Sync
+    const [curFirstBeat, setCurFirstBeat] = useState<number | null>(null);
+    const [nxtFirstBeat, setNxtFirstBeat] = useState<number | null>(null);
+
+    function getFirstBeatPath(url: string) {
+        const parts = url.split("/");
+        const fileName = parts.pop() ?? "track";
+        const dir = parts.join("/");
+        const baseName = fileName.replace(/\.[^/.]+$/, "");
+        return `${dir}/.tkdj/${baseName}.firstbeat.json`;
+    }
+
+    async function loadFirstBeat(url: string): Promise<number | null> {
+        try {
+            const path = getFirstBeatPath(url);
+            const exists = await invoke<boolean>("tkdj_file_exists", { path });
+            if (!exists) return null;
+            const raw = await invoke<string>("tkdj_read_text_file", { path });
+            return (JSON.parse(raw) as { firstBeatSeconds: number }).firstBeatSeconds;
+        } catch { return null; }
+    }
+
+    useEffect(() => {
+        setCurFirstBeat(null);
+        if (!current?.url) return;
+        loadFirstBeat(current.url).then(setCurFirstBeat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [current?.id]);
+
+    useEffect(() => {
+        setNxtFirstBeat(null);
+        if (!next?.url) return;
+        loadFirstBeat(next.url).then(setNxtFirstBeat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [next?.id]);
 
     useEffect(() => {
         setActivityRegions(null);
@@ -700,6 +740,7 @@ export default function MixPlayer({
                     return (
                         <CdjWaveform
                             trackId={current.id}
+                            filePath={current.url}
                             waveform={waveA}
                             waveformPeaks={current.analysis?.waveformPeaks ?? waveformPeaksOverride ?? undefined}
                             duration={curDur}
@@ -722,6 +763,7 @@ export default function MixPlayer({
                             preActivityBeatCount={16}
                             alignedVocalRegions={alignedVocalRegions ?? undefined}
                             vocalMixZones={vocalMixZones ?? undefined}
+                            isPlaying={isPlaying}
                         />
                     );
                 })() : (
@@ -832,6 +874,7 @@ export default function MixPlayer({
                     <CdjWaveform
                         key={next.id}
                         trackId={next.id}
+                        filePath={next.url}
                         waveform={waveB}
                         waveformPeaks={next.analysis?.waveformPeaks ?? nextWaveformPeaksOverride ?? undefined}
                         duration={nxtDur}
@@ -842,6 +885,7 @@ export default function MixPlayer({
                         beats={next.analysis?.beats ?? nextBeatsOverride ?? undefined}
                         metroBeat={metroBeatB}
                         phaseOffset={testOffsetB}
+                        isPlaying={nxtPlaying}
                     />
                 ) : (
                     <div className="mix-waveform-empty">Kein Track bereit</div>

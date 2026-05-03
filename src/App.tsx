@@ -81,7 +81,7 @@ function App() {
       const [first, ...rest] = q;
       queueRef.current = rest;
       setQueue(rest);
-      engine.loadAndPlay(first).then(() => feedEngine(first));
+      engine.loadAndPlay(first).then(() => { engine.resume(); feedEngine(first); });
     });
 
     mixEngineRef.current = engine;
@@ -206,10 +206,9 @@ function App() {
 
     const q = queueRef.current;
 
-    // Paused-State: Track ist schon geladen, nur abspielen + Queue füttern
+    // Paused-State: Track ist schon geladen, Queue füttern aber NICHT auto-resume
     if (state?.status === "paused" && state.currentTrack) {
       automixActiveRef.current = true;
-      engine.resume();
       feedEngine(state.currentTrack);
       return;
     }
@@ -255,7 +254,10 @@ function App() {
 
   function handleStop() {
     automixActiveRef.current = false;
-    mixEngineRef.current?.ejectCurrent();
+    const engine = mixEngineRef.current;
+    if (!engine) return;
+    engine.pause();
+    engine.seek(0);
   }
 
   function handleReset() {
