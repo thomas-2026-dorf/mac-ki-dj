@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MixState } from "../modules/audio/mixEngine";
 import type { MixTransitionPlan } from "../modules/transition/autoMixPlanner";
 import { decideTransition } from "../modules/transition/autoMixPlanner";
-import type { TransitionPoint } from "../types/track";
+import type { TransitionPoint, TransitionSettings, TransitionFade, TransitionEQ, TransitionEffect, TransitionStyle } from "../types/track";
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
-import CdjWaveform from "./CdjWaveform";
+import CdjWaveform, { type CdjWaveformHandle } from "./CdjWaveform";
 import { computeGridOffset, GRID_OFFSET_TOL_ENG, GRID_OFFSET_TOL_WIDE } from "../modules/analysis/gridOffsetAnalyzer";
 import { detectDownbeatPhase } from "../modules/analysis/downbeatDetector";
 import { loadAnalysisCache, saveAnalysisCache } from "../modules/analysis/analysisCache";
@@ -21,7 +21,9 @@ const TYPE_OPTIONS: {
     { key: "loop-out-16", label: "Loop-Out 16", role: "loop-out",    bars: 16   },
     { key: "loop-out-32", label: "Loop-Out 32", role: "loop-out",    bars: 32   },
     { key: "cut-out",     label: "Cut-Out",     role: "cut-out",     bars: null },
-    { key: "loop-in",     label: "Loop-In",     role: "loop-in",     bars: 8    },
+    { key: "loop-in-8",   label: "Loop-In 8",   role: "loop-in",     bars: 8    },
+    { key: "loop-in-16",  label: "Loop-In 16",  role: "loop-in",     bars: 16   },
+    { key: "loop-in-32",  label: "Loop-In 32",  role: "loop-in",     bars: 32   },
     { key: "cut-in",      label: "Cut-In",      role: "cut-in",      bars: null },
     { key: "passage",     label: "Passage",     role: "passage-out", bars: null },
 ];
@@ -52,8 +54,10 @@ type MixPlayerProps = {
     onDeckBSeek?: (time: number) => void;
     onSaveTransitionPoint?: (point: TransitionPoint) => void;
     onRemoveTransitionPoint?: (pointId: string) => void;
+    onUpdateTransitionPoint?: (point: TransitionPoint) => void;
     onSaveTransitionPointB?: (point: TransitionPoint) => void;
     onRemoveTransitionPointB?: (pointId: string) => void;
+    onUpdateTransitionPointB?: (point: TransitionPoint) => void;
     onSetVolume?: (v: number) => void;
     onSetRateNext?: (rate: number) => void;
     onSetRateCur?: (rate: number) => void;
@@ -75,12 +79,17 @@ export default function MixPlayer({
     onDeckBSeek,
     onSaveTransitionPoint,
     onRemoveTransitionPoint,
+    onUpdateTransitionPoint,
     onSaveTransitionPointB,
     onRemoveTransitionPointB,
+    onUpdateTransitionPointB,
     onSetVolume,
     onSetRateNext,
     onSetRateCur,
 }: MixPlayerProps) {
+    const waveformRefA = useRef<CdjWaveformHandle>(null);
+    const waveformRefB = useRef<CdjWaveformHandle>(null);
+
     const status = state?.status ?? "idle";
     const isPlaying = status === "playing" || status === "transitioning";
 
@@ -252,6 +261,122 @@ export default function MixPlayer({
     const [nextWaveformPeaksOverride, setNextWaveformPeaksOverride] = useState<WaveformPeaks | null>(null);
     const [nextBeatsOverride, setNextBeatsOverride] = useState<number[] | null>(null);
     const [nextGridStartOverride, setNextGridStartOverride] = useState<number | null>(null);
+
+    // Transition-Punkt-Editor
+    type EditState = { pointId: string; settings: TransitionSettings; deck: "A" | "B" };
+    const [editState, setEditState] = useState<EditState | null>(null);
+
+    function defaultSettings(): TransitionSettings {
+        return { fade: "none", fadeDurationBeats: 16, eq: "none", effect: "none", style: "soft" };
+    }
+
+    function openEdit(point: TransitionPoint, deck: "A" | "B") {
+        setEditState({
+            pointId: point.id,
+            settings: { ...defaultSettings(), ...(point.settings ?? {}) },
+            deck,
+        });
+    }
+
+    function closeEdit() { setEditState(null); }
+
+    function saveEdit(points: TransitionPoint[], onUpdate?: (p: TransitionPoint) => void) {
+        if (!editState) return;
+        const p = points.find(tp => tp.id === editState.pointId);
+        if (p) onUpdate?.({ ...p, settings: editState.settings });
+        closeEdit();
+    }
+
+    function renderEditPanel(points: TransitionPoint[], onUpdate?: (p: TransitionPoint) => void) {
+        if (!editState) return null;
+        const p = points.find(tp => tp.id === editState.pointId);
+        if (!p) return null;
+        const c = ROLE_COLORS[p.role];
+        const s = editState.settings;
+        const btnBase: React.CSSProperties = { borderRadius: "3px", fontSize: "10px", cursor: "pointer", padding: "1px 6px", border: "1px solid" };
+        const active: React.CSSProperties = { ...btnBase, background: "rgba(99,102,241,0.2)", borderColor: "#818cf8", color: "#818cf8" };
+        const inactive: React.CSSProperties = { ...btnBase, background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)", color: "#64748b" };
+
+        function row(label: string, children: React.ReactNode) {
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "3px" }}>
+                    <span style={{ fontSize: "10px", color: "#64748b", minWidth: "44px" }}>{label}</span>
+                    {children}
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: "6px 8px 4px", background: "rgba(8,13,26,0.95)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                <div style={{ fontSize: "10px", color: c.text, fontWeight: 600, marginBottom: "5px" }}>
+                    ✎ {p.label ?? p.role} @ {formatTime(p.timeSeconds)}
+                </div>
+                {row("Fade", (["none", "fade", "crossfade"] as TransitionFade[]).map(f => (
+                    <button key={f} style={s.fade === f ? active : inactive}
+                        onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, fade: f } } : es)}>
+                        {f === "none" ? "Kein" : f === "fade" ? "Fade" : "Crossfade"}
+                    </button>
+                )))}
+                {s.fade !== "none" && row("", (
+                    <>
+                        <span style={{ fontSize: "10px", color: "#64748b" }}>Dauer</span>
+                        <input type="number" min={4} max={64} step={4} value={s.fadeDurationBeats}
+                            onChange={e => setEditState(es => es ? { ...es, settings: { ...es.settings, fadeDurationBeats: Number(e.target.value) } } : es)}
+                            style={{ width: "38px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 4px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#475569" }}>Beats</span>
+                    </>
+                ))}
+                {row("EQ", ([
+                    { v: "none" as TransitionEQ, label: "Kein" },
+                    { v: "bass-swap" as TransitionEQ, label: "Bass-Swap" },
+                    { v: "filter-hpf" as TransitionEQ, label: "HPF-Filter" },
+                    { v: "filter-lpf" as TransitionEQ, label: "LPF-Filter" },
+                ]).map(({ v, label }) => (
+                    <button key={v} style={s.eq === v ? active : inactive}
+                        onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, eq: v } } : es)}>
+                        {label}
+                    </button>
+                )))}
+                {row("Effekt", ([
+                    { v: "none" as TransitionEffect, label: "Kein" },
+                    { v: "echo-out" as TransitionEffect, label: "Echo-Out" },
+                    { v: "backspin" as TransitionEffect, label: "Backspin" },
+                    { v: "vinyl-brake" as TransitionEffect, label: "Vinyl-Brake" },
+                ]).map(({ v, label }) => (
+                    <button key={v} style={s.effect === v ? active : inactive}
+                        onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, effect: v } } : es)}>
+                        {label}
+                    </button>
+                )))}
+                {row("Stil", ([
+                    { v: "soft" as TransitionStyle, label: "Soft" },
+                    { v: "hard" as TransitionStyle, label: "Hard-Cut" },
+                ]).map(({ v, label }) => (
+                    <button key={v} style={s.style === v ? active : inactive}
+                        onClick={() => setEditState(es => es ? { ...es, settings: { ...es.settings, style: v } } : es)}>
+                        {label}
+                    </button>
+                )))}
+                {row("Notiz", (
+                    <input type="text" placeholder="optional" value={s.notes ?? ""}
+                        onChange={e => setEditState(es => es ? { ...es, settings: { ...es.settings, notes: e.target.value || undefined } } : es)}
+                        style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", color: "#94a3b8", fontSize: "10px", padding: "1px 6px" }}
+                    />
+                ))}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "4px", marginTop: "4px" }}>
+                    <button onClick={closeEdit}
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "3px", color: "#64748b", padding: "2px 10px", fontSize: "10px", cursor: "pointer" }}>
+                        Abbrechen
+                    </button>
+                    <button onClick={() => saveEdit(points, onUpdate)}
+                        style={{ background: "rgba(99,102,241,0.2)", border: "1px solid #818cf8", borderRadius: "3px", color: "#818cf8", padding: "2px 10px", fontSize: "10px", cursor: "pointer", fontWeight: 600 }}>
+                        Speichern
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // Manuell gesetzte "1" aus .tkdj/*.firstbeat.json für Sync
     const [curFirstBeat, setCurFirstBeat] = useState<number | null>(null);
@@ -606,8 +731,8 @@ export default function MixPlayer({
                 )}
             </div>
 
-            {current && onSaveTransitionPoint && (
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
+            {onSaveTransitionPoint && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)", opacity: current ? 1 : 0.35, pointerEvents: current ? "auto" : "none" }}>
                     <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums", marginRight: "4px" }}>
                         @ {formatTime(curTime)}
                     </span>
@@ -642,28 +767,64 @@ export default function MixPlayer({
                             </button>
                         );
                     })}
+                    <span style={{ color: "#1e2a3a", fontSize: "11px", margin: "0 2px" }}>│</span>
+                    <button onClick={() => waveformRefA.current?.saveFirstBeat()}
+                        style={{ background: "#1a2a1a", border: "1px solid #ff5050", borderRadius: "4px", color: "#ff5050", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ▼1
+                    </button>
+                    <button onClick={() => waveformRefA.current?.setVocalStart()}
+                        style={{ background: "#001a22", border: "1px solid #00dcff", borderRadius: "4px", color: "#00dcff", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        VS
+                    </button>
+                    <button onClick={() => waveformRefA.current?.jumpToVocalEnd()}
+                        style={{ background: "#1a1000", border: "1px solid #ff9600", borderRadius: "4px", color: "#ff9600", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ⏭VE
+                    </button>
+                    <button onClick={() => waveformRefA.current?.setVocalEnd()}
+                        style={{ background: "#1a1000", border: "1px solid #ff9600", borderRadius: "4px", color: "#ff9600", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        VE
+                    </button>
+                    <span style={{ color: "#1e2a3a", fontSize: "11px", margin: "0 2px" }}>│</span>
+                    <button onClick={() => waveformRefA.current?.prevMarker()}
+                        style={{ background: "#151525", border: "1px solid #6688cc", borderRadius: "4px", color: "#6688cc", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ◀
+                    </button>
+                    <button onClick={() => waveformRefA.current?.nextMarker()}
+                        style={{ background: "#151525", border: "1px solid #6688cc", borderRadius: "4px", color: "#6688cc", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ▶
+                    </button>
                 </div>
             )}
 
-            {current && onRemoveTransitionPoint && (current.transitionPoints ?? []).length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px", background: "rgba(15,23,42,0.6)" }}>
-                    <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
-                    {(current.transitionPoints ?? []).map(p => {
-                        const c = ROLE_COLORS[p.role];
-                        return (
-                            <span
-                                key={p.id}
-                                style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
-                            >
-                                {p.label ?? p.role} @ {formatTime(p.timeSeconds)}
-                                <button
-                                    onClick={() => onRemoveTransitionPoint(p.id)}
-                                    style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
-                                    title="Entfernen"
-                                >×</button>
-                            </span>
-                        );
-                    })}
+            {onRemoveTransitionPoint && (current?.transitionPoints ?? []).length > 0 && (
+                <div style={{ background: "rgba(15,23,42,0.6)" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px" }}>
+                        <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
+                        {(current?.transitionPoints ?? []).map(p => {
+                            const c = ROLE_COLORS[p.role];
+                            const isEditing = editState?.pointId === p.id && editState.deck === "A";
+                            return (
+                                <span
+                                    key={p.id}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${isEditing ? c.text : c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
+                                >
+                                    <span
+                                        onClick={() => isEditing ? closeEdit() : openEdit(p, "A")}
+                                        style={{ cursor: "pointer" }}
+                                        title="Einstellungen bearbeiten"
+                                    >
+                                        {p.label ?? p.role} @ {formatTime(p.timeSeconds)}{p.settings && p.settings.fade !== "none" || p.settings?.eq !== "none" || p.settings?.effect !== "none" ? " ✎" : ""}
+                                    </span>
+                                    <button
+                                        onClick={() => onRemoveTransitionPoint(p.id)}
+                                        style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
+                                        title="Entfernen"
+                                    >×</button>
+                                </span>
+                            );
+                        })}
+                    </div>
+                    {editState?.deck === "A" && renderEditPanel(current?.transitionPoints ?? [], onUpdateTransitionPoint)}
                 </div>
             )}
 
@@ -739,6 +900,7 @@ export default function MixPlayer({
                     const deckAMixInEnd = 64 * deckABeatDur;
                     return (
                         <CdjWaveform
+                            ref={waveformRefA}
                             trackId={current.id}
                             filePath={current.url}
                             waveform={waveA}
@@ -820,8 +982,8 @@ export default function MixPlayer({
                 <div className="mix-seekbar-fill" style={{ width: nxtDur > 0 ? `${(nxtTime / nxtDur) * 100}%` : "0%" }} />
             </div>
 
-            {next && onSaveTransitionPointB && (
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)" }}>
+            {onSaveTransitionPointB && (
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "4px 8px", background: "rgba(15,23,42,0.6)", opacity: next ? 1 : 0.35, pointerEvents: next ? "auto" : "none" }}>
                     <span style={{ fontSize: "11px", color: "#64748b", fontVariantNumeric: "tabular-nums", marginRight: "4px" }}>
                         @ {formatTime(nxtTime)}
                     </span>
@@ -844,34 +1006,71 @@ export default function MixPlayer({
                             </button>
                         );
                     })}
+                    <span style={{ color: "#1e2a3a", fontSize: "11px", margin: "0 2px" }}>│</span>
+                    <button onClick={() => waveformRefB.current?.saveFirstBeat()}
+                        style={{ background: "#1a2a1a", border: "1px solid #ff5050", borderRadius: "4px", color: "#ff5050", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ▼1
+                    </button>
+                    <button onClick={() => waveformRefB.current?.setVocalStart()}
+                        style={{ background: "#001a22", border: "1px solid #00dcff", borderRadius: "4px", color: "#00dcff", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        VS
+                    </button>
+                    <button onClick={() => waveformRefB.current?.jumpToVocalEnd()}
+                        style={{ background: "#1a1000", border: "1px solid #ff9600", borderRadius: "4px", color: "#ff9600", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ⏭VE
+                    </button>
+                    <button onClick={() => waveformRefB.current?.setVocalEnd()}
+                        style={{ background: "#1a1000", border: "1px solid #ff9600", borderRadius: "4px", color: "#ff9600", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        VE
+                    </button>
+                    <span style={{ color: "#1e2a3a", fontSize: "11px", margin: "0 2px" }}>│</span>
+                    <button onClick={() => waveformRefB.current?.prevMarker()}
+                        style={{ background: "#151525", border: "1px solid #6688cc", borderRadius: "4px", color: "#6688cc", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ◀
+                    </button>
+                    <button onClick={() => waveformRefB.current?.nextMarker()}
+                        style={{ background: "#151525", border: "1px solid #6688cc", borderRadius: "4px", color: "#6688cc", padding: "3px 8px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>
+                        ▶
+                    </button>
                 </div>
             )}
 
-            {next && onRemoveTransitionPointB && (next.transitionPoints ?? []).length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px", background: "rgba(15,23,42,0.6)" }}>
-                    <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
-                    {(next.transitionPoints ?? []).map(p => {
-                        const c = ROLE_COLORS[p.role];
-                        return (
-                            <span
-                                key={p.id}
-                                style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
-                            >
-                                {p.label ?? p.role} @ {formatTime(p.timeSeconds)}
-                                <button
-                                    onClick={() => onRemoveTransitionPointB(p.id)}
-                                    style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
-                                    title="Entfernen"
-                                >×</button>
-                            </span>
-                        );
-                    })}
+            {onRemoveTransitionPointB && (next?.transitionPoints ?? []).length > 0 && (
+                <div style={{ background: "rgba(15,23,42,0.6)" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 8px 4px" }}>
+                        <span style={{ fontSize: "10px", color: "#475569", alignSelf: "center", marginRight: "2px" }}>Gesetzt:</span>
+                        {(next?.transitionPoints ?? []).map(p => {
+                            const c = ROLE_COLORS[p.role];
+                            const isEditing = editState?.pointId === p.id && editState.deck === "B";
+                            return (
+                                <span
+                                    key={p.id}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: c.bg, border: `1px solid ${isEditing ? c.text : c.border}`, borderRadius: "4px", padding: "1px 5px", fontSize: "10px", color: c.text }}
+                                >
+                                    <span
+                                        onClick={() => isEditing ? closeEdit() : openEdit(p, "B")}
+                                        style={{ cursor: "pointer" }}
+                                        title="Einstellungen bearbeiten"
+                                    >
+                                        {p.label ?? p.role} @ {formatTime(p.timeSeconds)}{p.settings && p.settings.fade !== "none" || p.settings?.eq !== "none" || p.settings?.effect !== "none" ? " ✎" : ""}
+                                    </span>
+                                    <button
+                                        onClick={() => onRemoveTransitionPointB(p.id)}
+                                        style={{ background: "none", border: "none", cursor: "pointer", color: c.text, padding: "0 0 0 2px", fontSize: "10px", lineHeight: 1 }}
+                                        title="Entfernen"
+                                    >×</button>
+                                </span>
+                            );
+                        })}
+                    </div>
+                    {editState?.deck === "B" && renderEditPanel(next?.transitionPoints ?? [], onUpdateTransitionPointB)}
                 </div>
             )}
 
             <div className="mix-waveform-wrap mix-waveform-wrap-next">
                 {next && nxtDur > 0 ? (
                     <CdjWaveform
+                        ref={waveformRefB}
                         key={next.id}
                         trackId={next.id}
                         filePath={next.url}

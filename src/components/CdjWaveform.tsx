@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
 import { detectVocalRegion } from "../modules/analysis/vocalAnalyzer";
 
-const HEIGHT = 120;
+const HEIGHT = 72;
 const VISIBLE_SECONDS = 4;
 const DEFAULT_VOCAL_DURATION = 120; // 2 Minuten Auto-Schätzung
 
@@ -47,12 +47,17 @@ const BEAT_COLORS = [
     { line: "rgba(255,255,255,0.6)", text: "rgba(255,255,255,0.9)", width: 1 },
 ];
 
-const BTN: React.CSSProperties = {
-    fontSize: 11, padding: "2px 8px", borderRadius: 3,
-    cursor: "pointer", fontFamily: "monospace", border: "1px solid",
+
+export type CdjWaveformHandle = {
+    saveFirstBeat(): void;
+    setVocalStart(): void;
+    setVocalEnd(): void;
+    jumpToVocalEnd(): void;
+    prevMarker(): void;
+    nextMarker(): void;
 };
 
-export default function CdjWaveform({
+const CdjWaveform = forwardRef<CdjWaveformHandle, Props>(function CdjWaveform({
     filePath,
     currentTime,
     duration,
@@ -61,7 +66,7 @@ export default function CdjWaveform({
     phaseOffset,
     onSeek,
     isPlaying,
-}: Props) {
+}: Props, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     const peaksRef        = useRef<number[]>([]);
@@ -78,15 +83,9 @@ export default function CdjWaveform({
     }
 
     // ── Beat "1" ──────────────────────────────────────────────────────────
-    const [firstBeat, setFirstBeat]         = useState<number | null>(null);
-    const [firstBeatSaved, setFirstBeatSaved] = useState(false);
     const firstBeatRef = useRef<number | null>(null);
 
     // ── Vocal Markers ─────────────────────────────────────────────────────
-    const [vocalStart, setVocalStart]     = useState<number | null>(null);
-    const [vocalEnd, setVocalEnd]         = useState<number | null>(null);
-    const [vocalSaved, setVocalSaved]     = useState(false);
-    const [vocalAnalyzing, setVocalAnalyzing] = useState(false);
     const vocalStartRef = useRef<number | null>(null);
     const vocalEndRef   = useRef<number | null>(null);
 
@@ -103,11 +102,6 @@ export default function CdjWaveform({
         firstBeatRef.current = null;
         vocalStartRef.current = null;
         vocalEndRef.current   = null;
-        setFirstBeat(null);
-        setFirstBeatSaved(false);
-        setVocalStart(null);
-        setVocalEnd(null);
-        setVocalSaved(false);
         if (!filePath) return;
 
         invoke<number[]>("superpowered_generate_waveform", { path: filePath })
@@ -121,8 +115,6 @@ export default function CdjWaveform({
             invoke<string>("tkdj_read_text_file", { path: fbPath }).then(raw => {
                 const d = JSON.parse(raw) as { firstBeatSeconds: number };
                 firstBeatRef.current = d.firstBeatSeconds;
-                setFirstBeat(d.firstBeatSeconds);
-                setFirstBeatSaved(true);
             });
         }).catch(() => {});
 
@@ -134,9 +126,6 @@ export default function CdjWaveform({
                 const d = JSON.parse(raw) as { vocalStartSeconds: number; vocalEndSeconds: number };
                 vocalStartRef.current = d.vocalStartSeconds;
                 vocalEndRef.current   = d.vocalEndSeconds;
-                setVocalStart(d.vocalStartSeconds);
-                setVocalEnd(d.vocalEndSeconds);
-                setVocalSaved(true);
             });
         }).catch(() => {});
     }, [filePath]);
@@ -316,26 +305,20 @@ export default function CdjWaveform({
     function saveFirstBeat() {
         const t = currentTimeRef.current;
         firstBeatRef.current = t;
-        setFirstBeat(t);
-        setFirstBeatSaved(false);
         onSeek(t); // Playhead auf die "1" springen
         const path = getCachePath(filePath!, "firstbeat.json");
         invoke("tkdj_write_text_file", { path, content: JSON.stringify({ firstBeatSeconds: t }, null, 2) })
-            .then(() => setFirstBeatSaved(true))
             .catch(console.error);
     }
 
     function saveVocal(start: number, end: number) {
         vocalStartRef.current = start;
         vocalEndRef.current   = end;
-        setVocalStart(start);
-        setVocalEnd(end);
-        setVocalSaved(false);
         const path = getCachePath(filePath!, "vocal.json");
         invoke("tkdj_write_text_file", {
             path,
             content: JSON.stringify({ vocalStartSeconds: start, vocalEndSeconds: end }, null, 2),
-        }).then(() => setVocalSaved(true)).catch(console.error);
+        }).catch(console.error);
     }
 
     function handleSetVocalStart() {
@@ -345,7 +328,6 @@ export default function CdjWaveform({
         saveVocal(t, estimatedEnd);
 
         // Vocal-Erkennung im Hintergrund — korrigiert VE wenn fertig
-        setVocalAnalyzing(true);
         detectVocalRegion(filePath!)
             .then(region => {
                 if (region) {
@@ -355,8 +337,7 @@ export default function CdjWaveform({
                     console.log("[CdjWaveform] Kein Vocal erkannt, behalte 2-Min-Schätzung");
                 }
             })
-            .catch(e => console.warn("[CdjWaveform] Vocal-Analyse fehlgeschlagen:", e))
-            .finally(() => setVocalAnalyzing(false));
+            .catch(e => console.warn("[CdjWaveform] Vocal-Analyse fehlgeschlagen:", e));
     }
 
     function handleSetVocalEnd() {
@@ -379,15 +360,6 @@ export default function CdjWaveform({
         return m.sort((a, b) => a.time - b.time);
     }
 
-    // State-Werte für Anzeige in der UI
-    function getMarkersFromState() {
-        const m: { label: string; time: number }[] = [];
-        if (firstBeat  !== null) m.push({ label: "▼1", time: firstBeat });
-        if (vocalStart !== null) m.push({ label: "VS", time: vocalStart });
-        if (vocalEnd   !== null) m.push({ label: "VE", time: vocalEnd });
-        return m.sort((a, b) => a.time - b.time);
-    }
-
     function handlePrevMarker() {
         const t = currentTimeRef.current;
         const prev = [...getMarkersFromRefs()].reverse().find(m => m.time < t - 0.1);
@@ -400,18 +372,14 @@ export default function CdjWaveform({
         if (next) onSeek(next.time);
     }
 
-    // ── UI ────────────────────────────────────────────────────────────────
-    const beat1Info = firstBeat === null
-        ? "Ziehen → 1 ausrichten"
-        : `▼1 ${firstBeat.toFixed(3)}s${firstBeatSaved ? " ✓" : ""}`;
-
-    const vocalInfo = vocalAnalyzing
-        ? "Analysiere Vocals..."
-        : vocalStart === null
-            ? "Waveform ziehen → VS setzen"
-            : vocalEnd === null
-                ? `VS ${vocalStart.toFixed(1)}s — VE fehlt`
-                : `VS ${vocalStart.toFixed(1)}s → VE ${vocalEnd.toFixed(1)}s (${(vocalEnd - vocalStart).toFixed(0)}s)${vocalSaved ? " ✓" : ""}`;
+    useImperativeHandle(ref, () => ({
+        saveFirstBeat,
+        setVocalStart: handleSetVocalStart,
+        setVocalEnd: handleSetVocalEnd,
+        jumpToVocalEnd: handleJumpToVocalEnd,
+        prevMarker: handlePrevMarker,
+        nextMarker: handleNextMarker,
+    }));
 
     return (
         <div style={{ position: "relative", width: "100%" }}>
@@ -420,68 +388,8 @@ export default function CdjWaveform({
                 onMouseDown={handleMouseDown}
                 style={{ display: "block", width: "100%", height: `${HEIGHT}px`, background: "#111", cursor: "grab" }}
             />
-
-            {/* Zeile 1: Beat "1" */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 6px" }}>
-                <button onClick={saveFirstBeat}
-                    style={{ ...BTN, background: "#1a2a1a", borderColor: "#ff5050", color: "#ff5050" }}>
-                    ▼1 setzen
-                </button>
-                <span style={{ color: "#ff7070", fontSize: 11 }}>{beat1Info}</span>
-            </div>
-
-            {/* Zeile 2: Vocal Marker */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px 4px" }}>
-                <button onClick={handleSetVocalStart}
-                    style={{ ...BTN, background: "#001a22", borderColor: "#00dcff", color: "#00dcff" }}>
-                    VS setzen
-                </button>
-                <button
-                    onClick={handleJumpToVocalEnd}
-                    disabled={vocalEnd === null}
-                    style={{ ...BTN, background: "#1a1000", borderColor: "#ff9600", color: "#ff9600",
-                        opacity: vocalEnd === null ? 0.4 : 1 }}>
-                    ⏭ zu VE
-                </button>
-                <button onClick={handleSetVocalEnd}
-                    style={{ ...BTN, background: "#1a1000", borderColor: "#ff9600", color: "#ff9600" }}>
-                    VE setzen
-                </button>
-                <span style={{ color: "#80d0e0", fontSize: 11 }}>{vocalInfo}</span>
-            </div>
-
-            {/* Zeile 3: Marker-Navigation ◀ ▶ */}
-            {(() => {
-                const markers = getMarkersFromState();
-                const t = currentTime;
-                const prevM = [...markers].reverse().find(m => m.time < t - 0.1);
-                const nextM = markers.find(m => m.time > t + 0.1);
-                return (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px 4px" }}>
-                        <button
-                            onClick={handlePrevMarker}
-                            disabled={!prevM}
-                            style={{ ...BTN, background: "#151525", borderColor: "#6688cc", color: "#6688cc",
-                                opacity: prevM ? 1 : 0.35, minWidth: 28 }}>
-                            ◀
-                        </button>
-                        <span style={{ color: "#6688cc", fontSize: 11, minWidth: 32, textAlign: "right" }}>
-                            {prevM ? prevM.label : "–"}
-                        </span>
-                        <span style={{ color: "#445", fontSize: 11 }}>|</span>
-                        <span style={{ color: "#6688cc", fontSize: 11, minWidth: 32 }}>
-                            {nextM ? nextM.label : "–"}
-                        </span>
-                        <button
-                            onClick={handleNextMarker}
-                            disabled={!nextM}
-                            style={{ ...BTN, background: "#151525", borderColor: "#6688cc", color: "#6688cc",
-                                opacity: nextM ? 1 : 0.35, minWidth: 28 }}>
-                            ▶
-                        </button>
-                    </div>
-                );
-            })()}
         </div>
     );
-}
+});
+
+export default CdjWaveform;

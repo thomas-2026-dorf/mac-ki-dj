@@ -30,6 +30,20 @@ export type TrackLoop = {
 
 export type TransitionPointRole = "loop-out" | "loop-in" | "cut-out" | "cut-in" | "passage-out" | "passage-in";
 
+export type TransitionFade = "none" | "fade" | "crossfade";
+export type TransitionEQ = "none" | "bass-swap" | "filter-hpf" | "filter-lpf";
+export type TransitionEffect = "none" | "echo-out" | "backspin" | "vinyl-brake";
+export type TransitionStyle = "soft" | "hard";
+
+export type TransitionSettings = {
+    fade: TransitionFade;
+    fadeDurationBeats: number;
+    eq: TransitionEQ;
+    effect: TransitionEffect;
+    style: TransitionStyle;
+    notes?: string;
+};
+
 export type TransitionPoint = {
     id: string;
     role: TransitionPointRole;
@@ -37,6 +51,7 @@ export type TransitionPoint = {
     timeSeconds: number;
     source: "auto" | "manual";
     label?: string;
+    settings?: TransitionSettings;
 };
 
 export type TrackExternalAnalysis = {

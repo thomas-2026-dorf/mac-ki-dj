@@ -163,11 +163,39 @@ function App() {
     handleTrackUpdated({ ...track, transitionPoints: updated });
   }
 
+  function handleUpdateTransitionPoint(point: TransitionPoint) {
+    const track = mixState?.currentTrack;
+    if (!track) return;
+    const existing = currentTrackTPs ?? track.transitionPoints ?? [];
+    const updated = existing.map(p => p.id === point.id ? point : p);
+    setCurrentTrackTPs(updated);
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(
+      library.map(t => t.id === track.id ? { ...t, transitionPoints: updated } : t)
+    ));
+    handleTrackUpdated({ ...track, transitionPoints: updated });
+  }
+
   function handleRemoveTransitionPointB(pointId: string) {
     const track = mixState?.nextTrack;
     if (!track) return;
     const existing = nextTrackTPs ?? track.transitionPoints ?? [];
     const updated = existing.filter(p => p.id !== pointId);
+    setNextTrackTPs(updated);
+    const saved = localStorage.getItem("tk-dj-track-library-v1");
+    const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
+    localStorage.setItem("tk-dj-track-library-v1", JSON.stringify(
+      library.map(t => t.id === track.id ? { ...t, transitionPoints: updated } : t)
+    ));
+    handleTrackUpdated({ ...track, transitionPoints: updated });
+  }
+
+  function handleUpdateTransitionPointB(point: TransitionPoint) {
+    const track = mixState?.nextTrack;
+    if (!track) return;
+    const existing = nextTrackTPs ?? track.transitionPoints ?? [];
+    const updated = existing.map(p => p.id === point.id ? point : p);
     setNextTrackTPs(updated);
     const saved = localStorage.getItem("tk-dj-track-library-v1");
     const library: Track[] = saved ? (JSON.parse(saved) as Track[]) : [];
@@ -351,8 +379,10 @@ function App() {
         onSetRateCur={(r) => mixEngineRef.current?.setRateCur(r)}
         onSaveTransitionPoint={handleSaveTransitionPoint}
         onRemoveTransitionPoint={handleRemoveTransitionPoint}
+        onUpdateTransitionPoint={handleUpdateTransitionPoint}
         onSaveTransitionPointB={handleSaveTransitionPointB}
         onRemoveTransitionPointB={handleRemoveTransitionPointB}
+        onUpdateTransitionPointB={handleUpdateTransitionPointB}
         onSetVolume={v => mixEngineRef.current?.setVolume(v)}
       />
 
