@@ -7,6 +7,7 @@ import type { TransitionPoint, TransitionSettings, TransitionFade, TransitionEQ,
 import { ROLE_COLORS } from "../modules/transition/transitionPointPlanner";
 import CdjWaveform, { type CdjWaveformHandle } from "./CdjWaveform";
 import { computeGridOffset, GRID_OFFSET_TOL_ENG, GRID_OFFSET_TOL_WIDE } from "../modules/analysis/gridOffsetAnalyzer";
+import { getNextBarStart } from "../modules/audio/beatGrid";
 import { detectDownbeatPhase } from "../modules/analysis/downbeatDetector";
 import { loadAnalysisCache, saveAnalysisCache } from "../modules/analysis/analysisCache";
 import type { WaveformPeaks } from "../modules/analysis/waveformPeaks";
@@ -111,34 +112,41 @@ export default function MixPlayer({
         const slaveBpm  = next?.analysis?.detectedBpm  ?? next?.bpm  ?? 0;
         if (!masterBpm || !slaveBpm || !next) return;
 
-        // Rate: Slave auf Master-BPM bringen
-        onSetRateNext?.(masterBpm / slaveBpm);
+        const rate = masterBpm / slaveBpm;
+        onSetRateNext?.(rate);
 
-        // Phase-Sync: firstbeat hat Vorrang vor Analyse-Wert
         const masterGrid = curFirstBeat ?? current?.analysis?.beatGridStartSeconds;
         const slaveGrid  = nxtFirstBeat ?? next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
         if (masterGrid == null || slaveGrid == null) return;
 
-        const masterInterval = 60 / masterBpm;
-        const slaveInterval  = 60 / slaveBpm;
-        const masterFrac = ((curTime - masterGrid) % masterInterval + masterInterval) % masterInterval;
-        const k = Math.round((nxtTime - slaveGrid) / slaveInterval);
-        onDeckBSeek?.(slaveGrid + k * slaveInterval + (masterFrac / masterInterval) * slaveInterval);
+        // Nächste "1" im Master finden
+        const masterNextBar1 = getNextBarStart({ time: curTime, gridStart: masterGrid, bpm: masterBpm });
+        const deltaReal = masterNextBar1 - curTime;
+
+        // Nächste "1" im Slave finden und so positionieren, dass beide "1"s zusammenfallen
+        const slaveNextBar1 = getNextBarStart({ time: nxtTime, gridStart: slaveGrid, bpm: slaveBpm });
+        onDeckBSeek?.(Math.max(0, slaveNextBar1 - deltaReal * rate));
     }
 
     function syncAtoB() {
         const masterBpm = next?.analysis?.detectedBpm  ?? next?.bpm  ?? 0;
         const slaveBpm  = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
         if (!masterBpm || !slaveBpm || !current) return;
-        onSetRateCur?.(masterBpm / slaveBpm);
-        const masterGrid = next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
-        const slaveGrid  = current?.analysis?.beatGridStartSeconds;
+
+        const rate = masterBpm / slaveBpm;
+        onSetRateCur?.(rate);
+
+        const masterGrid = nxtFirstBeat ?? next?.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+        const slaveGrid  = curFirstBeat ?? current?.analysis?.beatGridStartSeconds;
         if (masterGrid == null || slaveGrid === undefined) return;
-        const masterInterval = 60 / masterBpm;
-        const slaveInterval  = 60 / slaveBpm;
-        const masterFrac = ((nxtTime - masterGrid) % masterInterval + masterInterval) % masterInterval;
-        const k = Math.round((curTime - slaveGrid) / slaveInterval);
-        onSeek(slaveGrid + k * slaveInterval + (masterFrac / masterInterval) * slaveInterval);
+
+        // Nächste "1" im Master (Deck B) finden
+        const masterNextBar1 = getNextBarStart({ time: nxtTime, gridStart: masterGrid, bpm: masterBpm });
+        const deltaReal = masterNextBar1 - nxtTime;
+
+        // Nächste "1" im Slave (Deck A) so positionieren, dass beide "1"s zusammenfallen
+        const slaveNextBar1 = getNextBarStart({ time: curTime, gridStart: slaveGrid, bpm: slaveBpm });
+        onSeek(Math.max(0, slaveNextBar1 - deltaReal * rate));
     }
 
     useEffect(() => {
@@ -607,7 +615,7 @@ export default function MixPlayer({
                     {(isPlaying || status === "paused") && (
                         <button className="mix-btn mix-btn-reset" onClick={onReset} title="Zurücksetzen + Queue leeren">↺</button>
                     )}
-                    {nxtPlaying && current && next && (
+                    {current && next && (
                         <button
                             onClick={syncAtoB}
                             title="Deck A auf Deck-B-BPM und -Phase synchronisieren"

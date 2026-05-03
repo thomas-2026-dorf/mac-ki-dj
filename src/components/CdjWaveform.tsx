@@ -199,18 +199,18 @@ const CdjWaveform = forwardRef<CdjWaveformHandle, Props>(function CdjWaveform({
                 }
             }
 
-            // ── Beat-Grid + Vocal-Counter ─────────────────────────────────
+            // ── Beat-Grid + Beat-Counter ──────────────────────────────────
             const bpm_ = bpmRef.current;
-            const gridStart = firstBeatRef.current ?? beatGridRef.current ?? null;
-            if (bpm_ && bpm_ > 0 && gridStart !== null) {
+            // firstBeatSeconds ist führend; beatGridStartSeconds nur Fallback für Altdaten
+            const firstBeat = firstBeatRef.current ?? beatGridRef.current ?? null;
+            if (bpm_ && bpm_ > 0 && firstBeat !== null) {
                 const beatSec  = 60 / bpm_;
                 const phase    = phaseRef.current;
-                const vocalSt  = vocalStartRef.current;
-                const nFirst   = Math.ceil((ct - VISIBLE_SECONDS / 2 - gridStart) / beatSec);
-                const nLast    = Math.floor((ct + VISIBLE_SECONDS / 2 - gridStart) / beatSec);
+                const nFirst   = Math.ceil((ct - VISIBLE_SECONDS / 2 - firstBeat) / beatSec);
+                const nLast    = Math.floor((ct + VISIBLE_SECONDS / 2 - firstBeat) / beatSec);
 
                 for (let n = nFirst; n <= nLast; n++) {
-                    const beatTime = gridStart + n * beatSec;
+                    const beatTime = firstBeat + n * beatSec;
                     const x = Math.round(cx + (beatTime - ct) * pxPerSec);
                     if (x < 0 || x > w) continue;
 
@@ -223,14 +223,12 @@ const CdjWaveform = forwardRef<CdjWaveformHandle, Props>(function CdjWaveform({
                     ctx.font = style.width === 2 ? "bold 12px monospace" : "11px monospace";
                     ctx.fillText(String(((n - phase) % 4 + 4) % 4 + 1), x + 3, 14);
 
-                    // Vocal-Counter unten (außerhalb Waveform-Zone)
-                    if (vocalSt !== null && beatTime >= vocalSt - beatSec * 0.5) {
-                        const vocalBeat = Math.round((beatTime - vocalSt) / beatSec) + 1;
-                        if (vocalBeat >= 1) {
-                            ctx.fillStyle = "rgba(255,210,50,1)";
-                            ctx.font = "bold 10px monospace";
-                            ctx.fillText(String(vocalBeat), x + 2, h - 6);
-                        }
+                    // Beat-Counter unten: BeatNumber = round((beatTime - firstBeatSeconds) / beatSec) + 1
+                    const beatNum = Math.round((beatTime - firstBeat) / beatSec) + 1;
+                    if (beatNum >= 1) {
+                        ctx.fillStyle = "rgba(255,210,50,1)";
+                        ctx.font = "bold 10px monospace";
+                        ctx.fillText(String(beatNum), x + 2, h - 6);
                     }
                 }
             }
@@ -315,9 +313,22 @@ const CdjWaveform = forwardRef<CdjWaveformHandle, Props>(function CdjWaveform({
         vocalStartRef.current = start;
         vocalEndRef.current   = end;
         const path = getCachePath(filePath!, "vocal.json");
+
+        const bpm = bpmRef.current ?? 0;
+        // firstBeatSeconds ist führend; beatGridStartSeconds nur Fallback für Altdaten
+        const firstBeatSec = firstBeatRef.current ?? beatGridRef.current ?? 0;
+        const beatSec = bpm > 0 ? 60 / bpm : 0;
+        const vocalStartBeatIndex = beatSec > 0 ? Math.round((start - firstBeatSec) / beatSec) + 1 : null;
+        const vocalEndBeatIndex   = beatSec > 0 ? Math.round((end   - firstBeatSec) / beatSec) + 1 : null;
+
         invoke("tkdj_write_text_file", {
             path,
-            content: JSON.stringify({ vocalStartSeconds: start, vocalEndSeconds: end }, null, 2),
+            content: JSON.stringify({
+                vocalStartSeconds: start,
+                vocalEndSeconds: end,
+                vocalStartBeatIndex,
+                vocalEndBeatIndex,
+            }, null, 2),
         }).catch(console.error);
     }
 

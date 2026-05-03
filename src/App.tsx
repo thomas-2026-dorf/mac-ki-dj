@@ -7,6 +7,7 @@ import QueuePanel from "./components/QueuePanel";
 import MixPlayer from "./components/MixPlayer";
 import AiPanel from "./components/AiPanel";
 
+import { invoke } from "@tauri-apps/api/core";
 import { calculateTransitionScore } from "./modules/transition/transitionScore";
 import { planMixTransition, decideTransition } from "./modules/transition/autoMixPlanner";
 import { MixEngine } from "./modules/audio/mixEngine";
@@ -23,9 +24,51 @@ function loadSavedQueue(): Track[] {
   try { return JSON.parse(saved); } catch { return []; }
 }
 
-function makePlan(a: Track, b: Track) {
-  const plan = planMixTransition(a, b);
-  const decision = decideTransition(a, b);
+type VocalData = {
+  vocalStartSeconds: number;
+  vocalEndSeconds: number;
+  vocalStartBeatIndex: number | null;
+  vocalEndBeatIndex: number | null;
+};
+
+async function loadVocalJson(track: Track): Promise<VocalData | null> {
+  if (!track.url) return null;
+  try {
+    const parts = track.url.split("/");
+    const fileName = parts.pop() ?? "track";
+    const dir = parts.join("/");
+    const baseName = fileName.replace(/\.[^/.]+$/, "");
+    const path = `${dir}/.tkdj/${baseName}.vocal.json`;
+    const exists = await invoke<boolean>("tkdj_file_exists", { path });
+    if (!exists) return null;
+    const raw = await invoke<string>("tkdj_read_text_file", { path });
+    return JSON.parse(raw) as VocalData;
+  } catch { return null; }
+}
+
+async function makePlan(a: Track, b: Track) {
+  const [aVocal, bVocal] = await Promise.all([loadVocalJson(a), loadVocalJson(b)]);
+
+  const enrichedA: Track = aVocal ? {
+    ...a,
+    outroStartSeconds: a.outroStartSeconds ?? aVocal.vocalEndSeconds,
+    analysis: a.analysis ? {
+      ...a.analysis,
+      outroStartSeconds: a.analysis.outroStartSeconds ?? aVocal.vocalEndSeconds,
+    } : a.analysis,
+  } : a;
+
+  const enrichedB: Track = bVocal ? {
+    ...b,
+    introEndSeconds: b.introEndSeconds ?? bVocal.vocalStartSeconds,
+    analysis: b.analysis ? {
+      ...b.analysis,
+      introEndSeconds: b.analysis.introEndSeconds ?? bVocal.vocalStartSeconds,
+    } : b.analysis,
+  } : b;
+
+  const plan = planMixTransition(enrichedA, enrichedB);
+  const decision = decideTransition(enrichedA, enrichedB);
   return { ...plan, outroStartSeconds: decision.transitionStartTime };
 }
 
@@ -51,7 +94,7 @@ function App() {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   }, [queue]);
 
-  const feedEngine = useCallback((currentTrack: Track) => {
+  const feedEngine = useCallback(async (currentTrack: Track) => {
     const engine = mixEngineRef.current;
     if (!engine) return;
     // Nicht doppelt vorbereiten — prüfe direkt am Engine-State
@@ -62,7 +105,7 @@ function App() {
     const [next, ...rest] = q;
     queueRef.current = rest;
     setQueue(rest);
-    const plan = makePlan(currentTrack, next);
+    const plan = await makePlan(currentTrack, next);
     engine.prepareNext(next, plan);
   }, []);
 
@@ -248,9 +291,9 @@ function App() {
     queueRef.current = second ? rest : [];
     setQueue(second ? rest : []);
 
-    engine.loadAndPlay(first).then(() => {
+    engine.loadAndPlay(first).then(async () => {
       if (second) {
-        const plan = makePlan(first, second);
+        const plan = await makePlan(first, second);
         engine.prepareNext(second, plan);
       }
     });
@@ -300,7 +343,7 @@ function App() {
     engine.loadOnly(track);
   }
 
-  function handleLoadToPlayer2(track: Track) {
+  async function handleLoadToPlayer2(track: Track) {
     const engine = mixEngineRef.current;
     if (!engine) return;
     const current = engine.getState().currentTrack;
@@ -308,7 +351,7 @@ function App() {
       engine.loadOnlyNext(track);
       return;
     }
-    const plan = makePlan(current, track);
+    const plan = await makePlan(current, track);
     engine.prepareNext(track, plan);
   }
 
