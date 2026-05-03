@@ -13,6 +13,7 @@ import { planMixTransition, decideTransition } from "./modules/transition/autoMi
 import { MixEngine } from "./modules/audio/mixEngine";
 import type { MixState } from "./modules/audio/mixEngine";
 import { loadAnalysisCache } from "./modules/analysis/analysisCache";
+import { createMixPlan } from "./modules/automix/createMixPlan";
 
 import type { Track, TransitionPoint } from "./types/track";
 
@@ -83,6 +84,9 @@ function App() {
   // Waveform-Override: automatisch aus File-Cache laden wenn Track keine Waveform hat
   const [currentWaveformOverride, setCurrentWaveformOverride] = useState<number[] | null>(null);
   const [nextWaveformOverride, setNextWaveformOverride] = useState<number[] | null>(null);
+
+  const [currentVocalData, setCurrentVocalData] = useState<VocalData | null>(null);
+  const [nextVocalData, setNextVocalData] = useState<VocalData | null>(null);
 
   const mixEngineRef = useRef<MixEngine | null>(null);
   const queueRef = useRef<Track[]>(queue);
@@ -159,6 +163,24 @@ function App() {
     loadAnalysisCache(track.url)
       .then(cached => { if (!cancelled && (cached?.waveform?.length ?? 0) > 0) setNextWaveformOverride(cached!.waveform!); })
       .catch(() => {});
+    return () => { cancelled = true; };
+  }, [mixState?.nextTrack?.id]);
+
+  useEffect(() => {
+    setCurrentVocalData(null);
+    const track = mixState?.currentTrack;
+    if (!track) return;
+    let cancelled = false;
+    loadVocalJson(track).then(data => { if (!cancelled) setCurrentVocalData(data); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [mixState?.currentTrack?.id]);
+
+  useEffect(() => {
+    setNextVocalData(null);
+    const track = mixState?.nextTrack;
+    if (!track) return;
+    let cancelled = false;
+    loadVocalJson(track).then(data => { if (!cancelled) setNextVocalData(data); }).catch(() => {});
     return () => { cancelled = true; };
   }, [mixState?.nextTrack?.id]);
 
@@ -403,6 +425,25 @@ function App() {
     return { ...mixState, currentTrack: current, nextTrack: next };
   })();
 
+  const deckATrack = mixStateForPlayer?.currentTrack ?? null;
+  const deckBTrack = mixStateForPlayer?.nextTrack ?? null;
+
+  const mixPlan = deckATrack && deckBTrack && currentVocalData
+    ? createMixPlan({
+        master: {
+          bpm: deckATrack.bpm,
+          firstBeatSeconds: deckATrack.analysis?.firstBeatSeconds ?? 0,
+          vocalEndSeconds: currentVocalData.vocalEndSeconds,
+          transitionPoints: deckATrack.transitionPoints,
+        },
+        slave: {
+          bpm: deckBTrack.bpm,
+          firstBeatSeconds: deckBTrack.analysis?.firstBeatSeconds ?? 0,
+          vocalStartSeconds: nextVocalData?.vocalStartSeconds,
+        },
+      })
+    : null;
+
   return (
     <div className="app">
       <MixPlayer
@@ -474,6 +515,31 @@ function App() {
           <AiPanel />
         </div>
       </div>
+
+      {mixPlan && (
+        <div style={{
+          position: "fixed",
+          bottom: 10,
+          left: 10,
+          background: "#111",
+          color: "#0f0",
+          padding: "10px",
+          fontSize: "12px",
+          fontFamily: "monospace",
+          borderRadius: "6px",
+          zIndex: 9999
+        }}>
+          <div><b>MixPlan Debug</b></div>
+          <div>Preset: {mixPlan.presetName}</div>
+          <div>Länge: {mixPlan.lengthBeats} Beats</div>
+          <div style={{ marginTop: 6 }}><b>Master</b></div>
+          <div>Mix Start Beat: {mixPlan.mixStartBeat.toFixed(1)}</div>
+          <div>Mix Start Time: {mixPlan.mixStartTimeSeconds.toFixed(2)}s</div>
+          <div style={{ marginTop: 6 }}><b>Slave</b></div>
+          <div>Start Beat: {mixPlan.slaveStartBeat.toFixed(1)}</div>
+          <div>Start Time: {mixPlan.slaveStartTimeSeconds.toFixed(2)}s</div>
+        </div>
+      )}
     </div>
   );
 }
