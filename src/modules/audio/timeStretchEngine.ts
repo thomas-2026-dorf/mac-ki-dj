@@ -45,16 +45,13 @@ export async function ensureWavCache(inputPath: string) {
     return paths.wavPath;
 }
 
-export async function stretchAudioFile(options: {
+export async function stretchAudioFile(_options: {
     inputPath: string;
     outputPath: string;
     tempo: number;
 }) {
-    return await invoke<string>("test_rubberband_stretch", {
-        inputPath: options.inputPath,
-        outputPath: options.outputPath,
-        tempo: options.tempo,
-    });
+    console.log("External analysis/stretch engine disabled (Superpowered migration)");
+    return "disabled";
 }
 
 export async function convertAndStretch(options: {

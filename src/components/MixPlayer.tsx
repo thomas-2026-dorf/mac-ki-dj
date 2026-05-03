@@ -449,7 +449,7 @@ export default function MixPlayer({
                             style={{ marginLeft: "4px", background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.45)", borderRadius: "4px", color: "#34d399", padding: "2px 8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, letterSpacing: "0.03em" }}
                         >SYNC</button>
                     )}
-                    <button
+                    {false && <button
                         onClick={async () => {
                             if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
                             await audioCtxRef.current.resume();
@@ -459,8 +459,8 @@ export default function MixPlayer({
                         }}
                         title="Metronom-Grid-Debug"
                         style={{ marginLeft: "8px", background: metroOn ? "rgba(251,191,36,0.25)" : "rgba(255,255,255,0.05)", border: `1px solid ${metroOn ? "#fbbf24" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: metroOn ? "#fbbf24" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
-                    >♩</button>
-                    <button
+                    >♩</button>}
+                    {false && <button
                         onClick={() => {
                             const beats = current?.analysis?.beats;
                             const bpm = current?.analysis?.detectedBpm ?? current?.bpm ?? 0;
@@ -518,15 +518,15 @@ export default function MixPlayer({
 
                             setDebugGridOffsetSec(stabil === "ja" ? medianSec : null);
                         }}
-                        title={debugGridOffsetSec !== null ? `Grid-Offset aktiv: ${(debugGridOffsetSec * 1000).toFixed(1)} ms – klicken zum Neu-Messen` : "Grid-Offset Intro/Outro messen"}
+                        title={debugGridOffsetSec !== null ? `Grid-Offset aktiv: ${((debugGridOffsetSec ?? 0) * 1000).toFixed(1)} ms – klicken zum Neu-Messen` : "Grid-Offset Intro/Outro messen"}
                         style={{ marginLeft: "4px", background: debugGridOffsetSec !== null ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.05)", border: `1px solid ${debugGridOffsetSec !== null ? "#10b981" : "rgba(255,255,255,0.15)"}`, borderRadius: "4px", color: debugGridOffsetSec !== null ? "#10b981" : "#666", padding: "2px 8px", cursor: "pointer", fontSize: "13px" }}
-                    >⊡</button>
-                    {current?.url && current.analysis?.beatGridStartSeconds !== undefined && (current.analysis?.detectedBpm ?? current.bpm) && (
+                    >⊡</button>}
+                    {false && current?.url && current!.analysis?.beatGridStartSeconds !== undefined && (current!.analysis?.detectedBpm ?? current!.bpm) && (
                         <button
                             onClick={async () => {
-                                const url = current.url!;
-                                const bpm = current.analysis?.detectedBpm ?? current.bpm ?? 0;
-                                const rawGridStart = current.analysis!.beatGridStartSeconds!;
+                                const url = current!.url!;
+                                const bpm = current!.analysis?.detectedBpm ?? current!.bpm ?? 0;
+                                const rawGridStart = current!.analysis!.beatGridStartSeconds!;
                                 if (!bpm) return;
                                 const beatInterval = 60 / bpm;
                                 const effectiveGridStart = rawGridStart + (debugGridOffsetSec ?? 0);
@@ -627,13 +627,14 @@ export default function MixPlayer({
                 </div>
             )}
 
-            {/* ── Downbeat-Testpanel ──────────────────────────── */}
-            {current && (
+            {/* ── Downbeat-Testpanel disabled (Superpowered migration) ── */}
+            {false && current && (
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", padding: "4px 8px", background: "rgba(10,16,30,0.8)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "11px", color: "#64748b", marginRight: "2px" }}>Downbeat:</span>
                     {downbeatSuggestion ? (() => {
-                        const pct = Math.round(downbeatSuggestion.confidence * 100);
-                        const effectivePhase = (downbeatSuggestion.phase - testOffset + 4) % 4;
+                        const ds = downbeatSuggestion!;
+                        const pct = Math.round(ds.confidence * 100);
+                        const effectivePhase = (ds.phase - testOffset + 4) % 4;
                         if (testOffset > 0) {
                             return (
                                 <>
@@ -641,7 +642,7 @@ export default function MixPlayer({
                                         Manueller Test aktiv – bitte hören
                                     </span>
                                     <span style={{ fontSize: "11px", color: "#64748b" }}>
-                                        Auto: Phase {downbeatSuggestion.phase} · {pct}%
+                                        Auto: Phase {ds.phase} · {pct}%
                                     </span>
                                     <span style={{ fontSize: "11px", color: "#fbbf24" }}>
                                         Test +{testOffset} Beats → effektive Phase {effectivePhase}
@@ -657,7 +658,7 @@ export default function MixPlayer({
                                     Downbeat: {statusLabel}
                                 </span>
                                 <span style={{ fontSize: "11px", color: "#64748b" }}>
-                                    Phase {downbeatSuggestion.phase} · {pct}% · Vorschlag: Grid +{downbeatSuggestion.phase} Beat{downbeatSuggestion.phase !== 1 ? "s" : ""}
+                                    Phase {ds.phase} · {pct}% · Vorschlag: Grid +{ds.phase} Beat{ds.phase !== 1 ? "s" : ""}
                                 </span>
                             </>
                         );
@@ -847,7 +848,8 @@ export default function MixPlayer({
                 )}
             </div>
 
-            {next && (next.analysis?.beatGridStartSeconds !== undefined || nextGridStartOverride !== null) && (
+            {/* Deck-B-Phase-Panel disabled (Superpowered migration) */}
+            {false && next && (next!.analysis?.beatGridStartSeconds !== undefined || nextGridStartOverride !== null) && (
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 16px 4px", background: "rgba(10,16,30,0.8)" }}>
                     <span style={{ fontSize: "10px", color: "#475569" }}>Deck-B-Phase:</span>
                     <button
@@ -867,12 +869,12 @@ export default function MixPlayer({
                             style={{ background: "rgba(10,20,35,0.85)", border: "1px solid #1e3a5a", borderRadius: "3px", color: "#64748b", fontSize: "10px", padding: "1px 7px", cursor: "pointer", lineHeight: 1.5 }}
                         >Zurück</button>
                     )}
-                    {next?.url && (next.analysis?.detectedBpm ?? next.bpm) && (
+                    {next!.url && (next!.analysis?.detectedBpm ?? next!.bpm) && (
                         <button
                             onClick={async () => {
-                                const url = next.url!;
-                                const bpm = next.analysis?.detectedBpm ?? next.bpm ?? 0;
-                                const rawGridStart = next.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
+                                const url = next!.url!;
+                                const bpm = next!.analysis?.detectedBpm ?? next!.bpm ?? 0;
+                                const rawGridStart = next!.analysis?.beatGridStartSeconds ?? nextGridStartOverride;
                                 if (!bpm || rawGridStart === undefined || rawGridStart === null) return;
                                 const beatInterval = 60 / bpm;
                                 // Nächsten Grid-Beat zur aktuellen Deck-B-Position finden
